@@ -1,0 +1,47 @@
+[project]
+name = "rpa-ui-agent"
+version = "0.1.0"
+description = "Vision-Language Model based RPA UI Control Agent"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "RPA Agent Team"}
+]
+keywords = ["rpa", "ui-automation", "vlm", "gui-agent", "computer-use"]
+
+dependencies = [
+    "anthropic>=0.40.0",
+    "pyautogui>=0.9.54",
+    "pillow>=10.0.0",
+    "pywin32>=306",
+    "mss>=9.0.0",
+    "pydantic>=2.0.0",
+    "rich>=13.0.0",
+    "typer>=0.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.4.0",
+]
+
+[project.scripts]
+rpa-agent = "rpa_agent.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rpa_agent"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]

@@ -1,0 +1,44 @@
+# RPA UI Agent Project
+*.pyc
+__pycache__/
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Screenshots
+screenshots/
+example_screenshots/
+*.png
+!docs/*.png
+
+# Logs and history
+*.log
+*.json
+!package.json
+!pyproject.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# uv
+.python-version
