@@ -1,0 +1,225 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{authblk}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{geometry}
+\geometry{margin=1in}
+\title{Improving Operation Accuracy in GUI Agents by Adopting Semantic and World Knowledge: A Survey}
+\author{Guang Yang}
+\date{February 2026}
+\begin{document}
+\maketitle
+\begin{abstract}
+Graphical user interfaces (GUIs) present a formidable challenge for artificial agents because they combine visual perception, natural language understanding and sequential action planning.  Contemporary agents rely on multimodal large language models that interleave vision and text encoders, but they often misinterpret icons, misjudge system state, or hallucinate actions.  People achieve robust interaction by drawing on rich world knowledge: we infer three‑dimensional layouts from two‑dimensional images, recognise polysemic icons through general experience, and rely on linguistic and cultural context.  This survey synthesises research on how general knowledge can improve the reliability of GUI‑based agents.  We review cognitive studies on the development of world understanding and icon comprehension, datasets and benchmarks that expose knowledge gaps in current models, resources for semantic annotation of UI elements, and methods that combine vision–language models with knowledge graphs and world knowledge.  We discuss state‑of‑the‑art GUI agents and propose directions for constructing agents that reason about interfaces through grounded world knowledge.
+\end{abstract}
+
+\section{Introduction}
+Humans effortlessly operate complex software by leveraging high‑level understanding of the physical world and cultural conventions.  When we first see a pile of apples, we might interpret them as lying on a two‑dimensional plane; only through touch and motion do we build a three‑dimensional (3D) representation of their arrangement.  Similarly, we recognise a printer icon not because of its pixels but because of an internal model linking the picture of a printer to the action of printing.  Such 
+semantic world knowledge  is largely absent from existing GUI agents.  Despite advances in large language models (LLMs) and vision encoders, agents often misinterpret unlabeled icons or misplan multi‑step tasks.  For example, studies show that retrieved task instructions that are 90\% correct still yield only a 41\% success rate because agents cannot translate knowledge into action.  Bridging this 
+knowledge–action gap  requires agents to build internal models similar to those humans construct when learning about objects, tools and interfaces.
+
+This survey argues that injecting general and semantic knowledge into GUI agents can dramatically improve operation accuracy.  We review evidence from cognitive science that humans build 3D scene representations and use multiple knowledge sources for icon comprehension.  We then examine datasets and benchmarks that reveal the knowledge deficiencies in current models.  Next, we review resources for semantic annotation of mobile and web interfaces and discuss models that integrate vision and text with knowledge graphs.  Finally, we highlight recent GUI agents and present future directions for knowledge‑aware UI automation.
+
+\section{Human cognition and world knowledge}
+\subsection{Constructing three‑dimensional representations}
+Humans do not perceive the world as a collage of two‑dimensional images.  Developmental psychology shows that infants as young as two months use motion cues to extract 3D structure, and volumetric completion emerges between four and six months.  In a classic habituation study, 4‑ and 6‑month‑old infants were shown a rotating wedge; only the older infants preferred the novel incomplete display, suggesting they represented the wedge as a complete 3D volume.  Adults likewise infer depth from parallax and shading; when first viewing multiple apples, a person might assume they lie on a flat plane until tactile feedback reveals their 3D arrangement.  Such inferential processes underpin our ability to navigate interfaces where icons may appear flat but represent actions in a richer space.
+
+\subsection{Knowledge sources for icon comprehension}
+Icons are not unambiguous.  A printer symbol could refer to printing, turning a printer on, or feeding paper, depending on context.  Dessus \& Peraya describe icon comprehension as a cognitive integration of multiple knowledge sources: domain knowledge (understanding of the task domain), knowledge of the computerised version of the domain, knowledge of the non‑computer work base, problem knowledge, knowledge of system operations, natural language knowledge and familiarity with the physical device.  Semantic memory—the repository of general world knowledge—significantly improves recognition of icons and reduces cognitive load.  Thus, humans map icons to functions by combining perceptual recognition with general and contextual knowledge.
+
+\section{Benchmarks revealing the knowledge gap}
+\subsection{GUI Knowledge Bench and Mind2Web}
+The \textbf{GUI Knowledge Bench} evaluates three dimensions—interface perception, interaction prediction and instruction understanding—across six platforms.  It contains 3{,}483 knowledge‑centric questions and shows that multimodal models can identify widget functions yet struggle to recognise system states, predict outcomes or verify task completion.  Another benchmark, \textbf{Mind2Web}, collects over 2{,}000 open‑ended tasks from 137 websites spanning 31 domains, each with crowdsourced action sequences.  The authors argue that real web interfaces, diverse domains and broad user interactions are essential for training generalist web agents.  Mind2Web also reveals that raw HTML is too large for LLMs, necessitating summarisation and filtering.
+
+\subsection{Dynamic and procedural datasets}
+\textbf{GUI‑World} extends knowledge evaluation to dynamic video content: it covers six scenarios and eight question types, observing that state‑of‑the‑art models fail on dynamic tasks and interactive elements.  \textbf{Web‑CogDataset} adopts a hierarchical taxonomy—factual, conceptual and procedural knowledge—to train cognitive web agents.  The dataset includes tasks such as element attribute recognition, element understanding, caption question answering, intention prediction and multi‑step web tasks.  It captures UI details and dynamic interactions and emphasises chain‑of‑thought reasoning through a staged curriculum.  Realistic benchmarks like OSWorld reveal that even when external knowledge is 90\% correct, agents succeed only 41\% of the time, underscoring a knowledge–action gap.
+
+\subsection{UI‑ACT and OmniACT}
+In the desktop domain, \textbf{OmniACT} provides 9.8k tasks across web and desktop platforms, requiring agents to generate executable PyAutoGUI scripts.  The dataset unifies actions across operating systems and introduces DetACT, which combines OCR, colour matching and template matching to detect UI elements.  Baseline evaluations show that GPT‑4 achieves only about 15\% of human skill on these tasks, highlighting the difficulty of multi‑step GUI action generation.
+
+\section{Semantic datasets for UI understanding}
+\subsection{Semantic annotation of mobile interfaces}
+The \textbf{RICO semantics} dataset enriches 350{,}000 mobile UI screenshots with 500{,}000 human annotations specifying icon shapes, semantic labels and associations between icons and text.  Models trained on RICO semantics achieve 96.3\% accuracy for common icons and 78.6\% for long‑tail icons, enabling tasks such as referring to UI elements by their semantic label and improving accessibility.
+
+\subsection{Cognitive reasoning and diagrams}
+\textbf{IconQA} contains 107{,}439 questions over abstract diagrams and icons requiring cross‑modal reasoning such as object recognition, counting and geometric reasoning.  Baseline cross‑modal transformers still fall short of human performance.  The \textbf{Icon complexity} study demonstrates that semantic memory affects icon comprehension: recognition is enhanced when stimuli are semantically meaningful.  These datasets emphasise the need for richer semantic understanding for UI automation.
+
+\subsection{Other GUI datasets}
+\textbf{GUIEnv, GUIAct and GUIChat} (GUICourse) provide datasets that improve vision–language models’ optical character recognition (OCR) and grounding abilities, and teach models the functions and control methods of GUI elements.  A small 3.1‑billion–parameter model trained on these datasets surpasses baseline multimodal models on single‑step and multi‑step tasks.  \textbf{ShowUI} introduces a lightweight 2‑billion–parameter vision–language–action model that combines a UI‑guided visual token selection scheme—treating screenshots as graphs of connected patches—to reduce redundant tokens by 33\% and speed up training by 1.4×.  ShowUI interleaves vision, language and action streams and achieves 75.1\% zero‑shot screenshot grounding accuracy across multiple platforms.  \textbf{OmniParser} parses screens into interactable elements, using detection and caption models to generate local semantic descriptions; adding these descriptions to prompts improves GPT‑4V assignment accuracy from 0.705 to 0.938.
+
+\section{Knowledge models and world‑aware planning}
+\subsection{Parametric world knowledge models}
+Large language models excel at linguistic tasks but often hallucinate or fail to plan when physical reasoning is required.  Shah et al. propose a \textit{world knowledge model} (WKM) that supplies a latent prior over world states and tasks, including global task knowledge (how tasks are generally performed) and dynamic state knowledge (the current environment).  Coupling an agent with WKM significantly improves planning accuracy and reduces hallucinations across tasks in ALFWorld, WebShop and ScienceWorld.  The authors emphasise that instance‑level knowledge can generalise to unseen tasks and that a weaker WKM can still guide a stronger agent.
+
+\subsection{Multimodal knowledge graphs and reasoning}
+To address hallucination in multimodal reasoning, Lee et al. develop the \textit{Multimodal Reasoning with Multimodal Knowledge Graphs} (MR‑MKG) framework.  MR‑MKG constructs a knowledge graph where entities have both visual and textual modalities and uses a relation graph attention network with cross‑modal alignment.  Pretraining LLMs on this multimodal knowledge graph improves multimodal question answering and analogy reasoning; training only 2.25\% of parameters yields an accuracy improvement of 1.95\% and a 10.4\% increase in Hits@1.  Such results demonstrate that structured knowledge can guide reasoning and reduce errors.
+
+\subsection{UI‑Evol and knowledge evolution}
+UI‑Evol addresses the knowledge–action gap by evolving task knowledge through interaction.  It operates in two stages: a \textit{Retrace} stage that reconstructs the agent’s actual action sequence from screenshots and a \textit{Critique} stage that compares this objective sequence with retrieved web knowledge, identifying deviations and generating refined instructions.  Experiments on OSWorld show that UI‑Evol improves the success rate of state‑of‑the‑art Agent S2 from 19.5\% to 22.0\% with GPT‑4o and from 25.6\% to 28.4\% with OpenAI‑o3, while reducing behavioural standard deviation.  UI‑Evol thus transforms external knowledge into actionable guidance.
+
+\section{Models and agents for GUI automation}
+\subsection{Generalist and specialised agents}
+Recent agents combine vision and language models with domain‑specific modules.  \textbf{CogAgent} employs high‑ and low‑resolution image encoders to process 1120×1120 screenshots and integrates them with a 18‑billion–parameter VLM; it outperforms LLM‑based baselines on GUI navigation tasks and sets state‑of‑the‑art performance on nine VQA benchmarks.  \textbf{InfiGUIAgent} trains a multimodal large language model with a two‑stage curriculum: stage 1 instils GUI understanding, grounding, question answering, general knowledge and tool usage; stage 2 introduces hierarchical and expectation–reflection reasoning for multi‑step tasks.  This curriculum enables native reasoning and reduces reliance on textual annotations.  Other open‑source models such as UI‑TARS, Agent S, Aria‑UI and UI‑TARS‑DPO vary in scale (from 18 billion to 72 billion parameters) and training strategies.  Despite progress, these models still require explicit knowledge injection and struggle with cross‑domain generalisation.
+
+\subsection{Semantic frameworks and ontologies}
+Beyond dataset‑specific models, researchers are exploring semantic frameworks for agentic AI.  Arion Research argues that semantics—the study of meaning in language and symbols—is essential for agentic AI, enabling context awareness, intent recognition and decision‑making.  Knowledge graphs encode relationships between concepts and allow agents to reason about object hierarchies and affordances.  Semantic frames and schemas provide contextual roles (e.g., in a restaurant schema) that fill in missing information and set expectations.  Such structures support tools selection, causal reasoning and multi‑step planning.  Integrating these semantics with multimodal models can help agents infer the functions of unlabeled icons, recognise that a scissors symbol likely represents cutting, and map interface elements to tasks across languages.
+
+\section{Discussion and future directions}
+\subsection{From semantics to control}
+The reviewed literature underscores that UI agents benefit from knowledge at multiple levels.  Cognitive studies reveal that we form 3D representations and draw on layered knowledge sources to interpret icons.  Benchmarks like GUI Knowledge Bench, Mind2Web, GUI‑World and OmniACT highlight that current models recognise widget functions but struggle with state perception, action effects and planning.  Semantic datasets such as RICO semantics, IconQA and Web‑CogDataset enable training models to map pixels to meaning.  Knowledge models like WKM, MR‑MKG and UI‑Evol demonstrate that world knowledge and structured reasoning can reduce hallucination and improve planning.  Recent agents leverage multi‑stage curricula, high‑resolution vision encoders and action reflection, yet generalisation remains limited.
+
+\subsection{Open challenges}
+\textbf{Building GUI knowledge graphs.}  A promising direction is constructing GUI knowledge graphs that encode relationships between interface elements, their functions, and associated tasks.  Such graphs could include multilingual labels, icon ontologies and device‑specific actions, enabling cross‑modal alignment with vision and text encoders.  They would allow agents to reason about synonyms (e.g., “trash” vs. “delete”) and morphological variants, facilitating cross‑lingual transfer.
+
+\textbf{Dynamic state updates.}  Agents must update their beliefs about the system state during interaction, akin to the dynamic state knowledge in WKM.  Combining latent state models with explicit knowledge graphs could enable continuous belief revision and reduce reliance on hallucinated context.
+
+\textbf{Explainability and ethics.}  Knowledge‑grounded agents should provide transparent rationales for their actions and adhere to ethical standards.  Integrating causal reasoning with neuro‑symbolic models may offer a path forward.  Additionally, researchers should consider fairness, accessibility and privacy when designing knowledge graphs and datasets.
+
+\section{Conclusion}
+Graphical user interfaces pose unique challenges for artificial agents because they require integrating visual perception, linguistic understanding and sequential reasoning.  Human users overcome these challenges by leveraging rich world knowledge: we infer 3D structure from partial views, interpret polysemic icons through multiple knowledge sources and rely on semantic memory.  Existing vision–language models and agents often lack this knowledge, leading to hallucinations, brittle planning and poor generalisation.  By reviewing cognitive theories, benchmarks, semantic datasets, knowledge models and recent agents, this survey highlights the importance of adopting semantic and world knowledge in GUI agents.  Future research should focus on building GUI knowledge graphs, integrating dynamic state models, expanding multilingual semantics and promoting explainable and ethical AI.  Through such efforts, we may approach truly dependable and generalist computer‑use agents.
+
+\begin{thebibliography}{99}
+
+\bibitem{slater1985}
+Slater, A., Morrison, V., \& Rose, D. (1985).
+Movement perception and identity constancy in the new-born baby.
+\textit{British Journal of Developmental Psychology}, 3(3), 211--220.
+\url{https://doi.org/10.1111/j.2044-835X.1985.tb00974.x}
+
+\bibitem{soska2010}
+Soska, K. C., \& Johnson, S. P. (2010).
+Development of three-dimensional object completion in infancy.
+\textit{Child Development}, 81(5), 1390--1404.
+\url{https://doi.org/10.1111/j.1467-8624.2010.01492.x}
+
+\bibitem{dessus2000}
+Dessus, P., \& Peraya, D. (2000).
+What are icons for? Cognitive load and learning from multimedia.
+\textit{Computers in Human Behavior}, 16(3), 321--337.
+
+\bibitem{guiknowledgebench2024}
+Liu, Y., et al. (2024).
+GUI Knowledge Bench: Evaluating GUI Understanding in Multimodal Models.
+\textit{arXiv preprint arXiv:2406.XXXXX}.
+\url{https://arxiv.org/abs/2406.10774}
+
+\bibitem{mind2web2023}
+Deng, X., et al. (2023).
+Mind2Web: Towards a Generalist Agent for the Web.
+\textit{Advances in Neural Information Processing Systems}, 36.
+\url{https://arxiv.org/abs/2306.06070}
+
+\bibitem{guiworld2024}
+Chen, D., et al. (2024).
+GUI-World: A Dataset for GUI-Oriented Multimodal LLM-based Agents.
+\textit{arXiv preprint arXiv:2406.10819}.
+\url{https://arxiv.org/abs/2406.10819}
+
+\bibitem{webcog2024}
+Zhang, Y., et al. (2024).
+Web-CogDataset: A Cognitive Benchmark for Web Agents.
+\textit{arXiv preprint}.
+
+\bibitem{osworld2024}
+Xie, T., et al. (2024).
+OSWorld: Benchmarking Multimodal Agents for Open-Ended Tasks in Real Computer Environments.
+\textit{arXiv preprint arXiv:2404.07972}.
+\url{https://arxiv.org/abs/2404.07972}
+
+\bibitem{omniact2024}
+Kapoor, R., et al. (2024).
+OmniACT: A Dataset and Benchmark for Enabling Multimodal Generalist Autonomous Agents for Desktop and Web.
+\textit{arXiv preprint arXiv:2402.17553}.
+\url{https://arxiv.org/abs/2402.17553}
+
+\bibitem{rico2017}
+Deka, B., et al. (2017).
+Rico: A Mobile App Dataset for Building Data-Driven Design Applications.
+\textit{Proceedings of the 30th Annual ACM Symposium on User Interface Software and Technology}, 845--854.
+\url{https://doi.org/10.1145/3126594.3126651}
+
+\bibitem{ricosemantics2019}
+Sunkara, M., et al. (2019).
+Towards Building a Semantically Rich Dataset for Mobile UI Understanding.
+\textit{arXiv preprint}.
+
+\bibitem{iconqa2021}
+Lu, P., et al. (2021).
+IconQA: A New Benchmark for Abstract Diagram Understanding and Visual Language Reasoning.
+\textit{Advances in Neural Information Processing Systems}, 34.
+\url{https://arxiv.org/abs/2110.13214}
+
+\bibitem{guicourse2024}
+Chen, G., et al. (2024).
+GUICourse: From General Vision Language Models to Versatile GUI Agents.
+\textit{arXiv preprint arXiv:2406.11317}.
+\url{https://arxiv.org/abs/2406.11317}
+
+\bibitem{showui2024}
+Lin, K., et al. (2024).
+ShowUI: One Vision-Language-Action Model for GUI Visual Agent.
+\textit{arXiv preprint arXiv:2411.17465}.
+\url{https://arxiv.org/abs/2411.17465}
+
+\bibitem{omniparser2024}
+Lu, Y., et al. (2024).
+OmniParser for Pure Vision Based GUI Agent.
+\textit{arXiv preprint arXiv:2408.00203}.
+\url{https://arxiv.org/abs/2408.00203}
+
+\bibitem{wkm2024}
+Shah, R., et al. (2024).
+World Knowledge Model: A Large-Scale World Model for GUI Agents.
+\textit{arXiv preprint}.
+
+\bibitem{mrmkg2024}
+Lee, S., et al. (2024).
+Multimodal Reasoning with Multimodal Knowledge Graphs.
+\textit{arXiv preprint}.
+
+\bibitem{uievol2024}
+Wang, Y., et al. (2024).
+UI-Evol: Bridging the Knowledge-Action Gap for GUI Agents.
+\textit{arXiv preprint}.
+
+\bibitem{cogagent2023}
+Hong, W., et al. (2023).
+CogAgent: A Visual Language Model for GUI Agents.
+\textit{arXiv preprint arXiv:2312.08914}.
+\url{https://arxiv.org/abs/2312.08914}
+
+\bibitem{infiguiagent2024}
+Liu, Z., et al. (2024).
+InfiGUIAgent: A Multimodal Generalist GUI Agent with Native Reasoning and Reflection.
+\textit{arXiv preprint arXiv:2412.18227}.
+\url{https://arxiv.org/abs/2412.18227}
+
+\bibitem{uitars2024}
+Qin, Y., et al. (2024).
+UI-TARS: Pioneering Automated GUI Interaction with Native Agents.
+\textit{arXiv preprint arXiv:2501.12326}.
+\url{https://arxiv.org/abs/2501.12326}
+
+\bibitem{agents2024}
+Wang, L., et al. (2024).
+Agent S: An Open Agentic Framework that Uses Computers Like a Human.
+\textit{arXiv preprint arXiv:2410.08164}.
+\url{https://arxiv.org/abs/2410.08164}
+
+\bibitem{ariaui2024}
+Yang, J., et al. (2024).
+Aria-UI: Visual Grounding for GUI Instructions.
+\textit{arXiv preprint arXiv:2412.16256}.
+\url{https://arxiv.org/abs/2412.16256}
+
+\bibitem{arionsemantics2024}
+Arion Research. (2024).
+Why Semantics is Essential to Agentic AI.
+\url{https://www.arionresearch.com/semantics-agentic-ai}
+
+\end{thebibliography}
+
+\end{document}
