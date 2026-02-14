@@ -13,7 +13,13 @@ from typing import Any, Dict, List, Optional, Union
 class ActionType(str, Enum):
     """Types of UI actions the agent can perform."""
 
-    # Mouse actions
+    # Mouse movement actions (human-like)
+    MOVE_MOUSE = "move_mouse"  # Move mouse in a direction
+    CLICK_NOW = "click_now"  # Click at current mouse position
+    DOUBLE_CLICK_NOW = "double_click_now"  # Double-click at current position
+    RIGHT_CLICK_NOW = "right_click_now"  # Right-click at current position
+
+    # Legacy coordinate-based actions (deprecated but kept for compatibility)
     CLICK = "click"
     DOUBLE_CLICK = "double_click"
     RIGHT_CLICK = "right_click"
@@ -116,6 +122,44 @@ class HoverAction(Action):
 
 
 @dataclass
+class MoveMouseAction(Action):
+    """Move mouse in a direction toward a target element (human-like navigation)."""
+    direction: str = ""  # up, down, left, right, up-left, up-right, down-left, down-right
+    distance: str = "medium"  # small (10-30px), medium (50-100px), large (150-300px)
+    target_element: str = ""  # Description of what we're moving toward
+
+    def __post_init__(self):
+        self.action_type = ActionType.MOVE_MOUSE
+
+
+@dataclass
+class ClickNowAction(Action):
+    """Click at the current mouse position."""
+    element_description: str = ""  # What element is being clicked
+
+    def __post_init__(self):
+        self.action_type = ActionType.CLICK_NOW
+
+
+@dataclass
+class DoubleClickNowAction(Action):
+    """Double-click at the current mouse position."""
+    element_description: str = ""
+
+    def __post_init__(self):
+        self.action_type = ActionType.DOUBLE_CLICK_NOW
+
+
+@dataclass
+class RightClickNowAction(Action):
+    """Right-click at the current mouse position."""
+    element_description: str = ""
+
+    def __post_init__(self):
+        self.action_type = ActionType.RIGHT_CLICK_NOW
+
+
+@dataclass
 class TypeAction(Action):
     """Type text action."""
     text: str = ""
@@ -193,8 +237,10 @@ class FailAction(Action):
 # Type alias for any action
 AnyAction = Union[
     ClickAction, DoubleClickAction, RightClickAction, DragAction,
-    ScrollAction, HoverAction, TypeAction, KeyAction, HotkeyAction,
-    FocusWindowAction, WaitAction, ScreenshotAction, DoneAction, FailAction
+    ScrollAction, HoverAction, MoveMouseAction, ClickNowAction,
+    DoubleClickNowAction, RightClickNowAction, TypeAction, KeyAction,
+    HotkeyAction, FocusWindowAction, WaitAction, ScreenshotAction,
+    DoneAction, FailAction
 ]
 
 
@@ -209,6 +255,13 @@ def action_to_dict(action: AnyAction) -> Dict[str, Any]:
     # Add action-specific fields
     if isinstance(action, (ClickAction, DoubleClickAction, RightClickAction, HoverAction)):
         result.update({"x": action.x, "y": action.y, "element": action.element_description})
+    elif isinstance(action, MoveMouseAction):
+        result.update({
+            "direction": action.direction, "distance": action.distance,
+            "target_element": action.target_element
+        })
+    elif isinstance(action, (ClickNowAction, DoubleClickNowAction, RightClickNowAction)):
+        result.update({"element": action.element_description})
     elif isinstance(action, DragAction):
         result.update({
             "start_x": action.start_x, "start_y": action.start_y,

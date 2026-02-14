@@ -13,6 +13,7 @@ from .definitions import (
     Action, ActionType, AnyAction,
     ClickAction, DoubleClickAction, RightClickAction,
     DragAction, ScrollAction, HoverAction,
+    MoveMouseAction, ClickNowAction, DoubleClickNowAction, RightClickNowAction,
     TypeAction, KeyAction, HotkeyAction,
     FocusWindowAction, WaitAction, ScreenshotAction,
     DoneAction, FailAction
@@ -141,6 +142,40 @@ class ActionParser:
                     confidence=confidence,
                     action_type=ActionType.HOVER
                 ), "Parsed hover action"
+
+            elif action_type in ("move_mouse", "move"):
+                return MoveMouseAction(
+                    direction=data.get("direction", ""),
+                    distance=data.get("distance", "medium"),
+                    target_element=data.get("target_element", data.get("target", "")),
+                    reasoning=reasoning,
+                    confidence=confidence,
+                    action_type=ActionType.MOVE_MOUSE
+                ), "Parsed move mouse action"
+
+            elif action_type == "click_now":
+                return ClickNowAction(
+                    element_description=data.get("element", data.get("element_description", "")),
+                    reasoning=reasoning,
+                    confidence=confidence,
+                    action_type=ActionType.CLICK_NOW
+                ), "Parsed click now action"
+
+            elif action_type == "double_click_now":
+                return DoubleClickNowAction(
+                    element_description=data.get("element", data.get("element_description", "")),
+                    reasoning=reasoning,
+                    confidence=confidence,
+                    action_type=ActionType.DOUBLE_CLICK_NOW
+                ), "Parsed double click now action"
+
+            elif action_type == "right_click_now":
+                return RightClickNowAction(
+                    element_description=data.get("element", data.get("element_description", "")),
+                    reasoning=reasoning,
+                    confidence=confidence,
+                    action_type=ActionType.RIGHT_CLICK_NOW
+                ), "Parsed right click now action"
 
             elif action_type == "type":
                 return TypeAction(
