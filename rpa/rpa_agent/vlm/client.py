@@ -17,12 +17,22 @@ from PIL import Image
 from .prompts import SystemPrompts
 
 
+# Available models
+AVAILABLE_MODELS = [
+    "claude-opus-4.6-fast",
+    "claude-opus-4.6",
+    "claude-opus-4.6-1m",
+]
+
+DEFAULT_MODEL = "claude-opus-4.6-fast"
+
+
 @dataclass
 class VLMConfig:
     """Configuration for VLM client."""
     base_url: str = "http://localhost:23333/api/anthropic"
     api_key: str = "Powered by Agent Maestro"
-    model: str = "claude-opus-4.6-1m"
+    model: str = DEFAULT_MODEL
     max_tokens: int = 4096
     temperature: float = 0.1
 
@@ -58,18 +68,26 @@ class VLMClient:
             base_url=self.config.base_url
         )
 
-    def _encode_image(self, image: Union[str, Path, Image.Image, bytes]) -> Tuple[str, str]:
+    def _encode_image(self, image: Union[str, Path, Image.Image, bytes, Tuple[str, str]]) -> Tuple[str, str]:
         """
         Encode image to base64.
 
         Args:
-            image: Image as path, PIL Image, or bytes
+            image: Image as path, PIL Image, bytes, or tuple of (base64_data, media_type)
 
         Returns:
             Tuple of (base64 string, media type)
         """
+        # Handle tuple of (base64_data, media_type) - already encoded
+        if isinstance(image, tuple) and len(image) == 2:
+            return image[0], image[1]
+
         if isinstance(image, (str, Path)):
             path = Path(image)
+            # Check if it looks like a base64 string (no path separators, very long)
+            if isinstance(image, str) and '/' not in image and '\\' not in image and len(image) > 500:
+                # Assume it's raw base64 PNG data
+                return image, "image/png"
             with open(path, "rb") as f:
                 image_bytes = f.read()
             media_type = self._get_media_type(path.suffix)

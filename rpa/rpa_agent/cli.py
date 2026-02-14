@@ -12,7 +12,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
 from .agent import GUIAgent, AgentConfig
-from .vlm import VLMConfig
+from .vlm import VLMConfig, AVAILABLE_MODELS, DEFAULT_MODEL
 
 app = typer.Typer(
     name="rpa-agent",
@@ -20,6 +20,15 @@ app = typer.Typer(
     add_completion=False
 )
 console = Console()
+
+
+def model_callback(value: str) -> str:
+    """Validate model selection."""
+    if value not in AVAILABLE_MODELS:
+        raise typer.BadParameter(
+            f"Invalid model. Available: {', '.join(AVAILABLE_MODELS)}"
+        )
+    return value
 
 
 @app.command()
@@ -31,18 +40,22 @@ def run(
     confirm: bool = typer.Option(False, "--confirm", "-c", help="Confirm each action"),
     save_screenshots: bool = typer.Option(True, "--screenshots/--no-screenshots", help="Save screenshots"),
     screenshot_dir: str = typer.Option("./screenshots", "--screenshot-dir", help="Screenshot directory"),
+    screenshot_quality: int = typer.Option(50, "--quality", "-q", help="Screenshot JPEG quality (1-100, lower=faster)"),
+    screenshot_scale: float = typer.Option(0.75, "--scale", "-s", help="Screenshot scale (0.5-1.0, lower=faster)"),
     plan: bool = typer.Option(False, "--plan", "-p", help="Create plan before execution"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Save history to JSON file"),
+    no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable cursor overlay"),
     base_url: str = typer.Option(
         "http://localhost:23333/api/anthropic",
         "--base-url",
         help="VLM API base URL"
     ),
     model: str = typer.Option(
-        "claude-opus-4.6-1m",
+        DEFAULT_MODEL,
         "--model",
         "-m",
-        help="Model name"
+        help=f"Model name. Available: {', '.join(AVAILABLE_MODELS)}",
+        callback=model_callback
     ),
 ):
     """
@@ -50,11 +63,12 @@ def run(
 
     Examples:
         rpa-agent run "Open Chrome and go to google.com"
-        rpa-agent run "Click the search button" --max-steps 10
+        rpa-agent run "Click the search button" --max-steps 10 --model claude-opus-4.6-fast
         rpa-agent run "Fill out the form" --plan --confirm
+        rpa-agent run "Play video" -q 30 -s 0.5  # Fast mode with lower quality
     """
     console.print(Panel.fit(
-        "[bold blue]RPA UI Agent[/]\nVision-Language Model based GUI Automation",
+        f"[bold blue]RPA UI Agent[/]\nVision-Language Model based GUI Automation\n[dim]Model: {model}[/]",
         border_style="blue"
     ))
 
@@ -71,7 +85,10 @@ def run(
         dry_run=dry_run,
         confirm_actions=confirm,
         save_screenshots=save_screenshots,
-        screenshot_dir=Path(screenshot_dir)
+        screenshot_dir=Path(screenshot_dir),
+        screenshot_scale=screenshot_scale,
+        screenshot_quality=screenshot_quality,
+        show_cursor_overlay=not no_overlay
     )
 
     # Create and run agent
@@ -269,6 +286,21 @@ def test_vlm(
         console.print(f"[dim]Tokens used: {response.usage}[/]")
     except Exception as e:
         console.print(f"[red]Connection failed: {e}[/]")
+
+
+@app.command()
+def models():
+    """
+    List available models.
+    """
+    console.print("\n[bold]Available models:[/]\n")
+    for model in AVAILABLE_MODELS:
+        if model == DEFAULT_MODEL:
+            console.print(f"  [green]{model}[/] [dim](default)[/]")
+        else:
+            console.print(f"  [cyan]{model}[/]")
+    console.print("\n[dim]Use --model/-m to select a model[/]")
+    console.print("[dim]Example: rpa-agent run \"task\" --model claude-opus-4.6[/]\n")
 
 
 if __name__ == "__main__":
