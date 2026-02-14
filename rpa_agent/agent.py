@@ -93,6 +93,7 @@ class AgentConfig:
 
     # Visual feedback
     show_cursor_overlay: bool = True  # Show visual cursor indicator on screen
+    show_action_notifier: bool = True  # Show action notification UI
 
     # Retry settings
     max_retries: int = 3
@@ -144,8 +145,10 @@ class GUIAgent:
         self.vlm = VLMClient(self.config.vlm_config)
         self.parser = ActionParser()
 
-        # Cursor overlay for visual feedback
+        # Visual feedback overlays
         self._cursor_overlay = None
+        self._action_notifier = None
+        self._hotkey_monitor = None
 
         # State
         self.state = AgentState.IDLE
@@ -156,19 +159,29 @@ class GUIAgent:
         # Ensure screenshot directory exists
         self.config.screenshot_dir.mkdir(parents=True, exist_ok=True)
 
+    def _on_stop_hotkey(self) -> None:
+        """Callback when stop hotkey (Ctrl+Alt) is pressed."""
+        self.console.print("\n[yellow]Stop hotkey detected (Ctrl+Alt). Stopping agent...[/]")
+        self.state = AgentState.FAILED
+
     def _capture_screenshot(self, step_number: int) -> Tuple[str, Path, Dict[str, int]]:
         """Capture screenshot and return base64, path, and screen info."""
-        # Pause the cursor overlay to prevent ghosting in screenshot
+        # Pause overlays to prevent them from appearing in screenshot
         if self._cursor_overlay:
             self._cursor_overlay.pause()
-            time.sleep(0.05)  # Brief wait to ensure screen is clear
+        if self._action_notifier:
+            self._action_notifier.pause()
+
+        time.sleep(0.05)  # Brief wait to ensure screen is clear
 
         # Capture screenshot once
         img = self.screen.capture(scale=self.config.screenshot_scale)
 
-        # Resume the cursor overlay immediately after capture
+        # Resume overlays immediately after capture
         if self._cursor_overlay:
             self._cursor_overlay.resume()
+        if self._action_notifier:
+            self._action_notifier.resume()
 
         # Get screen info
         screen_info = {
@@ -338,6 +351,33 @@ class GUIAgent:
         # Move to the new position with smooth animation
         self.controller.move_to(target_x, target_y, duration=0.15)
 
+    def _get_action_detail(self, action: AnyAction) -> str:
+        """Build detail string for action notification."""
+        action_type = action.action_type.value
+
+        if hasattr(action, 'target_element') and action.target_element:
+            return action.target_element
+        elif hasattr(action, 'element') and action.element:
+            return action.element
+        elif hasattr(action, 'text') and action.text:
+            text = action.text[:30] + "..." if len(action.text) > 30 else action.text
+            return f'"{text}"'
+        elif hasattr(action, 'key') and action.key:
+            return action.key
+        elif hasattr(action, 'keys') and action.keys:
+            return " + ".join(action.keys)
+        elif hasattr(action, 'direction') and action.direction:
+            distance = getattr(action, 'distance', '')
+            return f"{action.direction} ({distance})"
+        elif hasattr(action, 'reason') and action.reason:
+            return action.reason
+        elif hasattr(action, 'summary') and action.summary:
+            return action.summary
+        elif hasattr(action, 'error') and action.error:
+            return action.error
+        else:
+            return ""
+
     def _build_feedback_message(self, result: ActionResult) -> str:
         """Build feedback message for the VLM based on action result."""
         if result.success:
@@ -400,11 +440,24 @@ class GUIAgent:
         self.steps = []
         self._conversation_history = []
 
+        # Start hotkey monitor for stopping agent (Ctrl+Alt)
+        from .core.hotkey import HotkeyMonitor
+        self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
+        self._hotkey_monitor.start()
+        self.console.print("[dim]Press Ctrl+Alt to stop the agent[/]")
+
         # Start cursor overlay for visual feedback
         if self.config.show_cursor_overlay:
             from .core.cursor_overlay import CursorOverlay
             self._cursor_overlay = CursorOverlay(color="red", size=50, line_width=4)
             self._cursor_overlay.start()
+
+        # Start action notifier for showing what agent is doing
+        if self.config.show_action_notifier:
+            from .core.action_notifier import ActionNotifier
+            self._action_notifier = ActionNotifier()
+            self._action_notifier.start()
+            self._action_notifier.show_action("thinking", f"Task: {task[:50]}...")
 
         self.console.print(Panel(f"[bold]Task:[/] {task}", title="GUI Agent Started"))
 
@@ -416,6 +469,10 @@ class GUIAgent:
             timestamp = datetime.now()
 
             try:
+                # Show "thinking" in notifier
+                if self._action_notifier:
+                    self._action_notifier.show_thinking(step_number)
+
                 # 1. Capture screenshot
                 self.console.print(f"\n[dim]Step {step_number}: Capturing screenshot...[/]")
                 base64_img, screenshot_path, screen_info = self._capture_screenshot(step_number)
@@ -470,7 +527,12 @@ class GUIAgent:
                     self.console.print(f"[yellow]Confirm action: {action.action_type.value}?[/]")
                     # In a real implementation, this would wait for user input
 
-                # 5. Execute action
+                # 5. Show action in notifier and execute
+                if self._action_notifier:
+                    # Build detail string based on action type
+                    detail = self._get_action_detail(action)
+                    self._action_notifier.show_step(step_number, action.action_type.value, detail)
+
                 self.console.print(f"[dim]Executing: {action.action_type.value}[/]")
                 result = self._execute_action(action)
                 step.action_result = result
@@ -503,10 +565,16 @@ class GUIAgent:
                 self.state = AgentState.FAILED
                 break
 
-        # Stop cursor overlay
+        # Stop overlays and hotkey monitor
+        if self._hotkey_monitor:
+            self._hotkey_monitor.stop()
+            self._hotkey_monitor = None
         if self._cursor_overlay:
             self._cursor_overlay.stop()
             self._cursor_overlay = None
+        if self._action_notifier:
+            self._action_notifier.stop()
+            self._action_notifier = None
 
         # Final status
         if self.state == AgentState.COMPLETED:
