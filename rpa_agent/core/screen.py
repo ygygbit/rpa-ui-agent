@@ -47,38 +47,58 @@ def draw_cursor_on_image(img: Image.Image, cursor_pos: Tuple[int, int], scale: f
     img = img.copy()
     draw = ImageDraw.Draw(img)
 
-    # Draw a prominent cursor indicator (red crosshair with circle)
-    cursor_size = max(15, int(20 * scale))
-    line_width = max(2, int(3 * scale))
+    # Draw a very prominent cursor indicator (large red crosshair with circle)
+    # Make it big enough to be easily visible
+    cursor_size = max(30, int(40 * scale))  # Much larger
+    line_width = max(4, int(5 * scale))  # Thicker lines
 
-    # Outer circle (white for visibility)
+    # Draw multiple rings for visibility
+    # Outer white ring (for contrast on dark backgrounds)
     draw.ellipse(
-        [cx - cursor_size, cy - cursor_size, cx + cursor_size, cy + cursor_size],
+        [cx - cursor_size - 2, cy - cursor_size - 2, cx + cursor_size + 2, cy + cursor_size + 2],
         outline="white",
-        width=line_width + 2
+        width=line_width + 4
     )
 
-    # Inner circle (red)
+    # Main red ring
     draw.ellipse(
         [cx - cursor_size, cy - cursor_size, cx + cursor_size, cy + cursor_size],
         outline="red",
         width=line_width
     )
 
-    # Crosshair lines (white background)
-    draw.line([(cx - cursor_size - 5, cy), (cx + cursor_size + 5, cy)], fill="white", width=line_width + 2)
-    draw.line([(cx, cy - cursor_size - 5), (cx, cy + cursor_size + 5)], fill="white", width=line_width + 2)
+    # Inner ring for extra visibility
+    inner_size = cursor_size - 8
+    draw.ellipse(
+        [cx - inner_size, cy - inner_size, cx + inner_size, cy + inner_size],
+        outline="red",
+        width=max(2, line_width - 2)
+    )
 
-    # Crosshair lines (red)
-    draw.line([(cx - cursor_size - 5, cy), (cx + cursor_size + 5, cy)], fill="red", width=line_width)
-    draw.line([(cx, cy - cursor_size - 5), (cx, cy + cursor_size + 5)], fill="red", width=line_width)
+    # Crosshair lines extending beyond circle
+    line_ext = cursor_size + 15
 
-    # Center dot
-    dot_size = max(3, int(4 * scale))
+    # White outline for lines (for contrast)
+    draw.line([(cx - line_ext, cy), (cx - cursor_size + 10, cy)], fill="white", width=line_width + 4)
+    draw.line([(cx + cursor_size - 10, cy), (cx + line_ext, cy)], fill="white", width=line_width + 4)
+    draw.line([(cx, cy - line_ext), (cx, cy - cursor_size + 10)], fill="white", width=line_width + 4)
+    draw.line([(cx, cy + cursor_size - 10), (cx, cy + line_ext)], fill="white", width=line_width + 4)
+
+    # Red crosshair lines
+    draw.line([(cx - line_ext, cy), (cx - cursor_size + 10, cy)], fill="red", width=line_width)
+    draw.line([(cx + cursor_size - 10, cy), (cx + line_ext, cy)], fill="red", width=line_width)
+    draw.line([(cx, cy - line_ext), (cx, cy - cursor_size + 10)], fill="red", width=line_width)
+    draw.line([(cx, cy + cursor_size - 10), (cx, cy + line_ext)], fill="red", width=line_width)
+
+    # Large center dot with white outline
+    dot_size = max(8, int(10 * scale))
+    draw.ellipse(
+        [cx - dot_size - 2, cy - dot_size - 2, cx + dot_size + 2, cy + dot_size + 2],
+        fill="white"
+    )
     draw.ellipse(
         [cx - dot_size, cy - dot_size, cx + dot_size, cy + dot_size],
-        fill="red",
-        outline="white"
+        fill="red"
     )
 
     return img

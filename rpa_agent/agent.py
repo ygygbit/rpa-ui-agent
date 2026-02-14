@@ -9,6 +9,8 @@ The Agent class ties together:
 - Feedback loop and self-correction
 """
 
+import base64
+import io
 import json
 import time
 from dataclasses import dataclass, field
@@ -80,7 +82,8 @@ class AgentConfig:
     # Execution settings
     max_steps: int = 50
     step_delay: float = 0.5  # Delay between steps
-    screenshot_scale: float = 1.0  # Screenshot scaling
+    screenshot_scale: float = 0.75  # Screenshot scaling (lower = faster)
+    screenshot_quality: int = 50  # JPEG quality (1-100, lower = faster)
     save_screenshots: bool = True
     screenshot_dir: Path = field(default_factory=lambda: Path("./screenshots"))
 
@@ -155,22 +158,37 @@ class GUIAgent:
 
     def _capture_screenshot(self, step_number: int) -> Tuple[str, Path, Dict[str, int]]:
         """Capture screenshot and return base64, path, and screen info."""
-        # Capture screenshot
-        base64_img, screen_info = self.screen.capture_to_base64(
-            scale=self.config.screenshot_scale
-        )
+        # Pause the cursor overlay to prevent ghosting in screenshot
+        if self._cursor_overlay:
+            self._cursor_overlay.pause()
+            time.sleep(0.05)  # Brief wait to ensure screen is clear
 
-        # Save screenshot if enabled
+        # Capture screenshot once
+        img = self.screen.capture(scale=self.config.screenshot_scale)
+
+        # Resume the cursor overlay immediately after capture
+        if self._cursor_overlay:
+            self._cursor_overlay.resume()
+
+        # Get screen info
+        screen_info = {
+            "width": img.width,
+            "height": img.height
+        }
+
+        # Save screenshot as PNG (compressed)
         screenshot_path = None
         if self.config.save_screenshots:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             screenshot_path = self.config.screenshot_dir / f"step_{step_number:03d}_{timestamp}.png"
-            self.screen.save_screenshot(screenshot_path, scale=self.config.screenshot_scale)
+            img.save(screenshot_path, format="PNG", optimize=True)
 
-        return base64_img, screenshot_path, {
-            "width": screen_info.width,
-            "height": screen_info.height
-        }
+        # Encode to base64 PNG for VLM (more reliable than JPEG)
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG", optimize=True)
+        base64_img = base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
+
+        return base64_img, screenshot_path, screen_info
 
     def _execute_action(self, action: AnyAction) -> ActionResult:
         """Execute a parsed action."""
@@ -278,9 +296,9 @@ class GUIAgent:
 
         # Distance mappings (in pixels)
         distance_map = {
-            "small": (15, 35),
-            "medium": (60, 120),
-            "large": (180, 350),
+            "small": (20, 50),
+            "medium": (80, 150),
+            "large": (200, 400),
         }
 
         # Direction vectors (dx, dy)
@@ -385,7 +403,7 @@ class GUIAgent:
         # Start cursor overlay for visual feedback
         if self.config.show_cursor_overlay:
             from .core.cursor_overlay import CursorOverlay
-            self._cursor_overlay = CursorOverlay(color=(255, 0, 0), size=30, line_width=3)
+            self._cursor_overlay = CursorOverlay(color="red", size=50, line_width=4)
             self._cursor_overlay.start()
 
         self.console.print(Panel(f"[bold]Task:[/] {task}", title="GUI Agent Started"))
@@ -404,8 +422,10 @@ class GUIAgent:
 
                 # 2. Analyze with VLM
                 self.console.print("[dim]Analyzing screenshot...[/]")
+                # Pass as tuple (base64_data, media_type) for PNG
+                screenshot_data = (base64_img, "image/png")
                 vlm_response = self.vlm.analyze_screenshot(
-                    screenshot=base64_img if not screenshot_path else screenshot_path,
+                    screenshot=screenshot_data,
                     task=task,
                     screen_info=screen_info,
                     history=self._conversation_history if self._conversation_history else None

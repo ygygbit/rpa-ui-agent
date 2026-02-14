@@ -51,7 +51,7 @@ Respond with a JSON object containing your action:
   `{"action": "move_mouse", "direction": "down-right", "distance": "medium", "target_element": "Chrome icon in taskbar"}`
 
   Directions: up, down, left, right, up-left, up-right, down-left, down-right
-  Distances: small (10-30px), medium (50-100px), large (150-300px)
+  Distances: small (20-50px), medium (80-150px), large (200-400px)
 
 - **click_now**: Click at current cursor position (when cursor is on target)
   `{"action": "click_now", "element": "Chrome icon"}`
@@ -87,11 +87,24 @@ Respond with a JSON object containing your action:
   `{"action": "fail", "error": "Reason why task cannot be completed"}`
 
 ## Navigation Strategy
-1. FIRST: Locate the mouse cursor in the screenshot
+1. FIRST: Locate the mouse cursor in the screenshot (marked with a red crosshair indicator)
 2. SECOND: Identify your target element
 3. THIRD: Determine the direction and distance to move
 4. FOURTH: Use move_mouse to get closer
 5. FIFTH: When cursor is ON the target, use click_now
+
+## IMPORTANT: Faster Approaches for Common Tasks
+- To open an application: Use Windows Search (click Start button, then type the app name)
+- To open a website: Use the browser address bar - type URL directly
+- To open browser: Click on Edge/Chrome icon in taskbar OR click Start then type "edge" or "chrome"
+- Avoid hunting for small icons - use search/type when possible
+
+## Avoiding Oscillation
+If you've been moving back and forth without progress:
+1. STOP and reassess the entire screen
+2. Consider using a different approach (keyboard instead of mouse)
+3. Use larger movements to explore the screen
+4. If target is not visible, scroll or navigate to find it
 
 ## Example Navigation Sequence
 Target: Click the Chrome icon in the taskbar
