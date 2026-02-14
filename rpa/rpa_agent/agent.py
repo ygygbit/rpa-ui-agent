@@ -26,6 +26,7 @@ from .actions import ActionParser, ActionType, AnyAction, action_to_dict
 from .actions.definitions import (
     ClickAction, DoubleClickAction, RightClickAction,
     DragAction, ScrollAction, HoverAction,
+    MoveMouseAction, ClickNowAction, DoubleClickNowAction, RightClickNowAction,
     TypeAction, KeyAction, HotkeyAction,
     FocusWindowAction, WaitAction, ScreenshotAction,
     DoneAction, FailAction
@@ -40,6 +41,25 @@ class AgentState(str, Enum):
     PAUSED = "paused"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+def _sanitize_text(text: str) -> str:
+    """Sanitize text for Windows console output by replacing problematic Unicode."""
+    # Replace common Unicode arrows and symbols with ASCII equivalents
+    replacements = {
+        '\u2193': 'v',  # ↓
+        '\u2191': '^',  # ↑
+        '\u2190': '<',  # ←
+        '\u2192': '>',  # →
+        '\u2713': '[x]',  # ✓
+        '\u2717': '[!]',  # ✗
+        '\u2022': '*',  # •
+        '\u2026': '...',  # …
+    }
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
+    # Encode to cp1252, replacing any remaining problematic chars
+    return text.encode('cp1252', errors='replace').decode('cp1252')
 
 
 @dataclass
@@ -67,6 +87,9 @@ class AgentConfig:
     # Safety settings
     confirm_actions: bool = False  # Ask before executing
     dry_run: bool = False  # Don't actually execute actions
+
+    # Visual feedback
+    show_cursor_overlay: bool = True  # Show visual cursor indicator on screen
 
     # Retry settings
     max_retries: int = 3
@@ -118,6 +141,9 @@ class GUIAgent:
         self.vlm = VLMClient(self.config.vlm_config)
         self.parser = ActionParser()
 
+        # Cursor overlay for visual feedback
+        self._cursor_overlay = None
+
         # State
         self.state = AgentState.IDLE
         self.steps: List[AgentStep] = []
@@ -161,6 +187,21 @@ class GUIAgent:
 
             elif isinstance(action, RightClickAction):
                 self.controller.right_click(action.x, action.y)
+
+            elif isinstance(action, MoveMouseAction):
+                self._execute_move_mouse(action)
+
+            elif isinstance(action, ClickNowAction):
+                # Click at current position (no coordinates)
+                self.controller.click()
+
+            elif isinstance(action, DoubleClickNowAction):
+                # Double-click at current position
+                self.controller.double_click()
+
+            elif isinstance(action, RightClickNowAction):
+                # Right-click at current position
+                self.controller.right_click()
 
             elif isinstance(action, DragAction):
                 self.controller.drag(
@@ -231,6 +272,54 @@ class GUIAgent:
                 error=str(e)
             )
 
+    def _execute_move_mouse(self, action: MoveMouseAction) -> None:
+        """Execute a directional mouse movement (human-like navigation)."""
+        import random
+
+        # Distance mappings (in pixels)
+        distance_map = {
+            "small": (15, 35),
+            "medium": (60, 120),
+            "large": (180, 350),
+        }
+
+        # Direction vectors (dx, dy)
+        direction_map = {
+            "up": (0, -1),
+            "down": (0, 1),
+            "left": (-1, 0),
+            "right": (1, 0),
+            "up-left": (-0.707, -0.707),
+            "up-right": (0.707, -0.707),
+            "down-left": (-0.707, 0.707),
+            "down-right": (0.707, 0.707),
+        }
+
+        direction = action.direction.lower()
+        distance_range = distance_map.get(action.distance.lower(), distance_map["medium"])
+
+        if direction not in direction_map:
+            raise ValueError(f"Unknown direction: {direction}")
+
+        dx, dy = direction_map[direction]
+
+        # Add some randomness for human-like movement
+        distance = random.randint(*distance_range)
+        dx = int(dx * distance)
+        dy = int(dy * distance)
+
+        # Get current position and calculate target
+        current = self.controller.mouse_position
+        target_x = current.x + dx
+        target_y = current.y + dy
+
+        # Clamp to screen boundaries
+        target_x = max(5, min(target_x, self.controller.screen_size[0] - 5))
+        target_y = max(5, min(target_y, self.controller.screen_size[1] - 5))
+
+        # Move to the new position with smooth animation
+        self.controller.move_to(target_x, target_y, duration=0.15)
+
     def _build_feedback_message(self, result: ActionResult) -> str:
         """Build feedback message for the VLM based on action result."""
         if result.success:
@@ -252,15 +341,22 @@ class GUIAgent:
             table.add_row("Action", step.action.action_type.value)
             if hasattr(step.action, 'x') and hasattr(step.action, 'y'):
                 table.add_row("Coordinates", f"({step.action.x}, {step.action.y})")
+            if hasattr(step.action, 'direction') and hasattr(step.action, 'distance'):
+                table.add_row("Movement", f"{step.action.direction} ({step.action.distance})")
+            if hasattr(step.action, 'target_element') and step.action.target_element:
+                table.add_row("Target", _sanitize_text(step.action.target_element[:40]))
+            if hasattr(step.action, 'element_description') and step.action.element_description:
+                table.add_row("Element", _sanitize_text(step.action.element_description[:40]))
             if hasattr(step.action, 'text'):
-                table.add_row("Text", step.action.text[:50])
+                table.add_row("Text", _sanitize_text(step.action.text[:50]))
 
         if step.action_result:
             status = "[green]Success[/]" if step.action_result.success else f"[red]Failed: {step.action_result.error}[/]"
             table.add_row("Result", status)
 
         if step.reasoning:
-            table.add_row("Reasoning", step.reasoning[:100] + "..." if len(step.reasoning) > 100 else step.reasoning)
+            reasoning = _sanitize_text(step.reasoning[:100] + "..." if len(step.reasoning) > 100 else step.reasoning)
+            table.add_row("Reasoning", reasoning)
 
         self.console.print(Panel(table, title=f"Step {step.step_number}"))
 
@@ -285,6 +381,12 @@ class GUIAgent:
         self.current_task = task
         self.steps = []
         self._conversation_history = []
+
+        # Start cursor overlay for visual feedback
+        if self.config.show_cursor_overlay:
+            from .core.cursor_overlay import CursorOverlay
+            self._cursor_overlay = CursorOverlay(color=(255, 0, 0), size=30, line_width=3)
+            self._cursor_overlay.start()
 
         self.console.print(Panel(f"[bold]Task:[/] {task}", title="GUI Agent Started"))
 
@@ -380,6 +482,11 @@ class GUIAgent:
                 self.console.print(f"[red]Error in step {step_number}: {e}[/]")
                 self.state = AgentState.FAILED
                 break
+
+        # Stop cursor overlay
+        if self._cursor_overlay:
+            self._cursor_overlay.stop()
+            self._cursor_overlay = None
 
         # Final status
         if self.state == AgentState.COMPLETED:

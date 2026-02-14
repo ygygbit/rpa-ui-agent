@@ -4,6 +4,7 @@ from .definitions import (
     Action, ActionType, AnyAction, action_to_dict,
     ClickAction, DoubleClickAction, RightClickAction,
     DragAction, ScrollAction, HoverAction,
+    MoveMouseAction, ClickNowAction, DoubleClickNowAction, RightClickNowAction,
     TypeAction, KeyAction, HotkeyAction,
     FocusWindowAction, WaitAction, ScreenshotAction,
     DoneAction, FailAction
@@ -14,6 +15,7 @@ __all__ = [
     "Action", "ActionType", "AnyAction", "action_to_dict",
     "ClickAction", "DoubleClickAction", "RightClickAction",
     "DragAction", "ScrollAction", "HoverAction",
+    "MoveMouseAction", "ClickNowAction", "DoubleClickNowAction", "RightClickNowAction",
     "TypeAction", "KeyAction", "HotkeyAction",
     "FocusWindowAction", "WaitAction", "ScreenshotAction",
     "DoneAction", "FailAction",
