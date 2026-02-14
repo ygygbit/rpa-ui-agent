@@ -28,7 +28,7 @@ from .actions import ActionParser, ActionType, AnyAction, action_to_dict
 from .actions.definitions import (
     ClickAction, DoubleClickAction, RightClickAction,
     DragAction, ScrollAction, HoverAction,
-    MoveMouseAction, ClickNowAction, DoubleClickNowAction, RightClickNowAction,
+    MoveMouseAction, MoveToAction, MoveRelativeAction, ClickNowAction, DoubleClickNowAction, RightClickNowAction,
     TypeAction, KeyAction, HotkeyAction,
     FocusWindowAction, WaitAction, ScreenshotAction,
     DoneAction, FailAction
@@ -82,7 +82,7 @@ class AgentConfig:
     # Execution settings
     max_steps: int = 50
     step_delay: float = 0.5  # Delay between steps
-    screenshot_scale: float = 0.75  # Screenshot scaling (lower = faster)
+    screenshot_scale: float = 1.0  # Screenshot scaling (1.0 = no scaling for accurate coordinates)
     screenshot_quality: int = 50  # JPEG quality (1-100, lower = faster)
     save_screenshots: bool = True
     screenshot_dir: Path = field(default_factory=lambda: Path("./screenshots"))
@@ -221,6 +221,14 @@ class GUIAgent:
 
             elif isinstance(action, MoveMouseAction):
                 self._execute_move_mouse(action)
+
+            elif isinstance(action, MoveToAction):
+                # Move directly to coordinates with smooth animation
+                self.controller.move_to(action.x, action.y, duration=0.3)
+
+            elif isinstance(action, MoveRelativeAction):
+                # Move relative to current position (dx, dy pixels)
+                self.controller.move_relative(action.dx, action.dy, duration=0.2)
 
             elif isinstance(action, ClickNowAction):
                 # Click at current position (no coordinates)
@@ -399,6 +407,8 @@ class GUIAgent:
             table.add_row("Action", step.action.action_type.value)
             if hasattr(step.action, 'x') and hasattr(step.action, 'y'):
                 table.add_row("Coordinates", f"({step.action.x}, {step.action.y})")
+            if hasattr(step.action, 'dx') and hasattr(step.action, 'dy'):
+                table.add_row("Offset", f"(dx={step.action.dx}, dy={step.action.dy})")
             if hasattr(step.action, 'direction') and hasattr(step.action, 'distance'):
                 table.add_row("Movement", f"{step.action.direction} ({step.action.distance})")
             if hasattr(step.action, 'target_element') and step.action.target_element:

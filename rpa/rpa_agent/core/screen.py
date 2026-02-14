@@ -19,13 +19,32 @@ from PIL import Image, ImageDraw, ImageFont
 # Windows API for cursor position
 user32 = ctypes.windll.user32
 
-# Colors for navigation aids (semi-transparent look achieved via color choice)
-GRID_COLOR = (100, 100, 100)  # Gray for grid lines
-GRID_LABEL_COLOR = (200, 200, 50)  # Yellow for coordinate labels
+# Enable Per-Monitor DPI awareness for accurate screen capture coordinates
+# This MUST be called before any mss capture to get physical pixel coordinates
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+except Exception:
+    # Fall back to system DPI aware if per-monitor fails
+    try:
+        user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+# Colors for navigation aids
+CURSOR_COLOR = (255, 0, 0)  # Red for cursor indicator
 RING_COLORS = {
-    50: (0, 255, 255),    # Cyan for 50px
-    100: (255, 255, 0),   # Yellow for 100px
-    200: (255, 165, 0),   # Orange for 200px
+    50: (0, 255, 255),     # Cyan for 50px
+    100: (255, 255, 0),    # Yellow for 100px
+    150: (255, 165, 0),    # Orange for 150px
+    200: (255, 100, 100),  # Light red for 200px
+    300: (200, 100, 255),  # Purple for 300px
+}
+# Cardinal direction colors
+DIRECTION_COLORS = {
+    "up": (0, 255, 0),      # Green
+    "down": (255, 0, 255),  # Magenta
+    "left": (255, 255, 0),  # Yellow
+    "right": (0, 255, 255), # Cyan
 }
 
 
@@ -36,58 +55,154 @@ def get_cursor_position() -> Tuple[int, int]:
     return point.x, point.y
 
 
-def draw_navigation_grid(img: Image.Image, grid_spacing: int = 200, scale: float = 1.0) -> Image.Image:
+def draw_radial_overlay(img: Image.Image, cursor_pos: Tuple[int, int], scale: float = 1.0) -> Image.Image:
     """
-    Draw a navigation grid with coordinate labels on the image.
+    Draw a radial coordinate overlay centered on the cursor position.
+
+    This creates a polar coordinate system with:
+    - Distance rings at 50, 100, 150, 200, 300 pixels from cursor
+    - Cardinal direction indicators (up, down, left, right) with arrows
+    - Distance labels on rings
+    - NO axis margins - coordinates are relative to cursor
 
     Args:
-        img: PIL Image to draw on
-        grid_spacing: Spacing between grid lines in pixels (before scaling)
-        scale: Scale factor applied to the image
+        img: PIL Image to draw on (already captured screenshot)
+        cursor_pos: (x, y) position of cursor on screen
+        scale: Scale factor (for label sizing)
 
     Returns:
-        Image with grid overlay
+        Image with radial overlay (same dimensions as input)
     """
+    import math
+
+    # Work on a copy with alpha
+    img = img.copy()
+    if img.mode != 'RGBA':
+        img = img.convert('RGBA')
+
     draw = ImageDraw.Draw(img, 'RGBA')
-    width, height = img.size
 
-    # Scaled grid spacing
-    spacing = int(grid_spacing * scale)
+    cx, cy = int(cursor_pos[0] * scale), int(cursor_pos[1] * scale)
 
-    # Try to load a font, fall back to default
+    # Load fonts
     try:
-        font = ImageFont.truetype("arial.ttf", max(10, int(12 * scale)))
+        font = ImageFont.truetype("arial.ttf", 14)
+        small_font = ImageFont.truetype("arial.ttf", 11)
     except:
         font = ImageFont.load_default()
+        small_font = font
 
-    # Draw vertical lines and labels
-    x = 0
-    while x < width:
-        # Draw line (thin, semi-transparent gray)
-        draw.line([(x, 0), (x, height)], fill=(*GRID_COLOR, 80), width=1)
+    # Draw distance rings centered on cursor
+    for distance, color in sorted(RING_COLORS.items()):
+        radius = int(distance * scale)
 
-        # Draw coordinate label at top
-        label = str(int(x / scale))
-        draw.text((x + 2, 2), label, fill=(*GRID_LABEL_COLOR, 200), font=font)
+        # Draw the ring
+        draw.ellipse(
+            [cx - radius, cy - radius, cx + radius, cy + radius],
+            outline=(*color, 180),
+            width=2
+        )
 
-        x += spacing
+        # Draw distance label at multiple positions around the ring
+        # Place labels at 45-degree intervals on the ring
+        for angle_deg in [45, 135, 225, 315]:
+            angle_rad = math.radians(angle_deg)
+            label_x = cx + int(radius * math.cos(angle_rad))
+            label_y = cy + int(radius * math.sin(angle_rad))
 
-    # Draw horizontal lines and labels
-    y = 0
-    while y < height:
-        # Draw line
-        draw.line([(0, y), (width, y)], fill=(*GRID_COLOR, 80), width=1)
+            label = f"{distance}px"
+            bbox = draw.textbbox((0, 0), label, font=small_font)
+            w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-        # Draw coordinate label at left edge
-        label = str(int(y / scale))
-        draw.text((2, y + 2), label, fill=(*GRID_LABEL_COLOR, 200), font=font)
+            # Check bounds
+            if 0 <= label_x - w//2 < img.width - w and 0 <= label_y - h//2 < img.height - h:
+                # Draw background for readability
+                draw.rectangle(
+                    [label_x - w//2 - 2, label_y - h//2 - 1,
+                     label_x + w//2 + 2, label_y + h//2 + 1],
+                    fill=(0, 0, 0, 200)
+                )
+                draw.text((label_x - w//2, label_y - h//2), label, fill=(*color, 255), font=small_font)
 
-        y += spacing
+    # Draw cardinal direction indicators with arrows
+    arrow_len = 30
+    for direction, (dx, dy) in [("up", (0, -1)), ("down", (0, 1)),
+                                 ("left", (-1, 0)), ("right", (1, 0))]:
+        color = DIRECTION_COLORS[direction]
+
+        # Calculate arrow start (at 300px ring) and direction
+        start_dist = 320  # Just outside the largest ring
+        end_dist = start_dist + arrow_len
+
+        start_x = cx + int(dx * start_dist)
+        start_y = cy + int(dy * start_dist)
+        end_x = cx + int(dx * end_dist)
+        end_y = cy + int(dy * end_dist)
+
+        # Check if arrow is within bounds
+        if (0 <= end_x < img.width and 0 <= end_y < img.height):
+            # Draw arrow line
+            draw.line([(start_x, start_y), (end_x, end_y)], fill=(*color, 220), width=3)
+
+            # Draw arrowhead
+            head_size = 8
+            if direction == "up":
+                draw.polygon([(end_x, end_y), (end_x - head_size, end_y + head_size),
+                              (end_x + head_size, end_y + head_size)], fill=(*color, 220))
+            elif direction == "down":
+                draw.polygon([(end_x, end_y), (end_x - head_size, end_y - head_size),
+                              (end_x + head_size, end_y - head_size)], fill=(*color, 220))
+            elif direction == "left":
+                draw.polygon([(end_x, end_y), (end_x + head_size, end_y - head_size),
+                              (end_x + head_size, end_y + head_size)], fill=(*color, 220))
+            elif direction == "right":
+                draw.polygon([(end_x, end_y), (end_x - head_size, end_y - head_size),
+                              (end_x - head_size, end_y + head_size)], fill=(*color, 220))
+
+            # Draw direction label
+            label_x = cx + int(dx * (end_dist + 25))
+            label_y = cy + int(dy * (end_dist + 25))
+            label = direction.upper()
+
+            bbox = draw.textbbox((0, 0), label, font=font)
+            w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+            if 0 <= label_x - w//2 < img.width - w and 0 <= label_y - h//2 < img.height - h:
+                draw.rectangle(
+                    [label_x - w//2 - 2, label_y - h//2 - 1,
+                     label_x + w//2 + 2, label_y + h//2 + 1],
+                    fill=(0, 0, 0, 200)
+                )
+                draw.text((label_x - w//2, label_y - h//2), label, fill=(*color, 255), font=font)
+
+    # Draw diagonal direction indicators (smaller)
+    for direction, (dx, dy) in [("up-left", (-0.707, -0.707)), ("up-right", (0.707, -0.707)),
+                                 ("down-left", (-0.707, 0.707)), ("down-right", (0.707, 0.707))]:
+        start_dist = 320
+        label_dist = 350
+
+        label_x = cx + int(dx * label_dist)
+        label_y = cy + int(dy * label_dist)
+
+        # Abbreviated labels for diagonals
+        abbrev = {"up-left": "UL", "up-right": "UR", "down-left": "DL", "down-right": "DR"}
+        label = abbrev[direction]
+
+        bbox = draw.textbbox((0, 0), label, font=small_font)
+        w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+        if 0 <= label_x - w//2 < img.width - w and 0 <= label_y - h//2 < img.height - h:
+            draw.rectangle(
+                [label_x - w//2 - 2, label_y - h//2 - 1,
+                 label_x + w//2 + 2, label_y + h//2 + 1],
+                fill=(0, 0, 0, 180)
+            )
+            draw.text((label_x - w//2, label_y - h//2), label, fill=(200, 200, 200, 255), font=small_font)
 
     return img
 
 
-def draw_distance_rings(img: Image.Image, cursor_pos: Tuple[int, int], scale: float = 1.0) -> Image.Image:
+def draw_distance_rings(img: Image.Image, cursor_pos: Tuple[int, int], scale: float = 1.0, margin: int = 0) -> Image.Image:
     """
     Draw distance rings around the cursor position.
 
@@ -95,15 +210,16 @@ def draw_distance_rings(img: Image.Image, cursor_pos: Tuple[int, int], scale: fl
         img: PIL Image to draw on
         cursor_pos: (x, y) position of cursor on screen (before scaling)
         scale: Scale factor applied to the image
+        margin: Offset for axis margin (added to cursor position)
 
     Returns:
         Image with distance rings
     """
     draw = ImageDraw.Draw(img, 'RGBA')
 
-    # Scale cursor position
-    cx = int(cursor_pos[0] * scale)
-    cy = int(cursor_pos[1] * scale)
+    # Scale cursor position and add margin offset
+    cx = int(cursor_pos[0] * scale) + margin
+    cy = int(cursor_pos[1] * scale) + margin
 
     # Try to load a font for labels
     try:
@@ -140,7 +256,7 @@ def draw_distance_rings(img: Image.Image, cursor_pos: Tuple[int, int], scale: fl
     return img
 
 
-def draw_cursor_on_image(img: Image.Image, cursor_pos: Tuple[int, int], scale: float = 1.0) -> Image.Image:
+def draw_cursor_on_image(img: Image.Image, cursor_pos: Tuple[int, int], scale: float = 1.0, margin: int = 0) -> Image.Image:
     """
     Draw a visible cursor indicator on the screenshot.
 
@@ -148,13 +264,14 @@ def draw_cursor_on_image(img: Image.Image, cursor_pos: Tuple[int, int], scale: f
         img: PIL Image to draw on
         cursor_pos: (x, y) position of cursor on screen
         scale: Scale factor applied to the image
+        margin: Offset for axis margin (added to cursor position)
 
     Returns:
         Image with cursor overlay
     """
-    # Scale cursor position if image was scaled
-    cx = int(cursor_pos[0] * scale)
-    cy = int(cursor_pos[1] * scale)
+    # Scale cursor position if image was scaled, and add margin offset
+    cx = int(cursor_pos[0] * scale) + margin
+    cy = int(cursor_pos[1] * scale) + margin
 
     # Create a copy to draw on
     img = img.copy()
@@ -263,25 +380,23 @@ class ScreenCapture:
         region: Optional[Tuple[int, int, int, int]] = None,
         scale: float = 1.0,
         include_cursor: bool = True,
-        include_grid: bool = True,
-        include_distance_rings: bool = True,
-        grid_spacing: int = 200
+        include_radial_overlay: bool = True,
+        grid_spacing: int = 50  # Unused, kept for compatibility
     ) -> Image.Image:
         """
-        Capture the screen or a region.
+        Capture the screen or a region with radial coordinate overlay.
 
         Args:
             region: Optional (left, top, width, height) tuple for region capture
             scale: Scale factor for the output image (0.5 = half size)
             include_cursor: Whether to draw cursor indicator on screenshot
-            include_grid: Whether to draw navigation grid
-            include_distance_rings: Whether to draw distance rings around cursor
+            include_radial_overlay: Whether to draw radial distance rings and direction indicators
 
         Returns:
-            PIL Image of the captured screen
+            PIL Image of the captured screen (NO margins added - same size as screen)
         """
         # Get cursor position BEFORE capturing (for accuracy)
-        cursor_pos = get_cursor_position() if (include_cursor or include_distance_rings) else None
+        cursor_pos = get_cursor_position() if (include_cursor or include_radial_overlay) else None
 
         if region:
             monitor = {
@@ -305,16 +420,13 @@ class ScreenCapture:
             new_size = (int(img.width * scale), int(img.height * scale))
             img = img.resize(new_size, Image.Resampling.LANCZOS)
 
-        # Draw navigation aids (order matters: grid first, then rings, then cursor)
-        if include_grid:
-            img = draw_navigation_grid(img, grid_spacing=grid_spacing, scale=scale)
-
-        if include_distance_rings and cursor_pos:
-            img = draw_distance_rings(img, cursor_pos, scale)
+        # Draw radial overlay centered on cursor (includes distance rings and direction indicators)
+        if include_radial_overlay and cursor_pos:
+            img = draw_radial_overlay(img, cursor_pos, scale)
 
         # Draw cursor indicator on top
         if include_cursor and cursor_pos:
-            img = draw_cursor_on_image(img, cursor_pos, scale)
+            img = draw_cursor_on_image(img, cursor_pos, scale, margin=0)
 
         # Convert back to RGB for saving
         img = img.convert("RGB")

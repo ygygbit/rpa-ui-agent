@@ -14,7 +14,9 @@ class ActionType(str, Enum):
     """Types of UI actions the agent can perform."""
 
     # Mouse movement actions (human-like)
-    MOVE_MOUSE = "move_mouse"  # Move mouse in a direction
+    MOVE_MOUSE = "move_mouse"  # Move mouse in a direction (legacy)
+    MOVE_TO = "move_to"  # Move mouse directly to coordinates (legacy, may have DPI issues)
+    MOVE_RELATIVE = "move_relative"  # Move mouse by relative offset (dx, dy) - PREFERRED
     CLICK_NOW = "click_now"  # Click at current mouse position
     DOUBLE_CLICK_NOW = "double_click_now"  # Double-click at current position
     RIGHT_CLICK_NOW = "right_click_now"  # Right-click at current position
@@ -133,6 +135,32 @@ class MoveMouseAction(Action):
 
 
 @dataclass
+class MoveToAction(Action):
+    """Move mouse directly to specific coordinates (with smooth animation)."""
+    x: int = 0
+    y: int = 0
+    target_element: str = ""  # Description of the target element at the coordinates
+
+    def __post_init__(self):
+        self.action_type = ActionType.MOVE_TO
+
+
+@dataclass
+class MoveRelativeAction(Action):
+    """Move mouse by relative offset from current position (dx, dy pixels).
+
+    This is the preferred movement action as it doesn't depend on absolute coordinates.
+    The VLM can use the radial distance rings to estimate how far to move.
+    """
+    dx: int = 0  # Horizontal offset: positive = right, negative = left
+    dy: int = 0  # Vertical offset: positive = down, negative = up
+    target_element: str = ""  # Description of the target element
+
+    def __post_init__(self):
+        self.action_type = ActionType.MOVE_RELATIVE
+
+
+@dataclass
 class ClickNowAction(Action):
     """Click at the current mouse position."""
     element_description: str = ""  # What element is being clicked
@@ -237,8 +265,8 @@ class FailAction(Action):
 # Type alias for any action
 AnyAction = Union[
     ClickAction, DoubleClickAction, RightClickAction, DragAction,
-    ScrollAction, HoverAction, MoveMouseAction, ClickNowAction,
-    DoubleClickNowAction, RightClickNowAction, TypeAction, KeyAction,
+    ScrollAction, HoverAction, MoveMouseAction, MoveToAction, MoveRelativeAction,
+    ClickNowAction, DoubleClickNowAction, RightClickNowAction, TypeAction, KeyAction,
     HotkeyAction, FocusWindowAction, WaitAction, ScreenshotAction,
     DoneAction, FailAction
 ]
@@ -258,6 +286,16 @@ def action_to_dict(action: AnyAction) -> Dict[str, Any]:
     elif isinstance(action, MoveMouseAction):
         result.update({
             "direction": action.direction, "distance": action.distance,
+            "target_element": action.target_element
+        })
+    elif isinstance(action, MoveToAction):
+        result.update({
+            "x": action.x, "y": action.y,
+            "target_element": action.target_element
+        })
+    elif isinstance(action, MoveRelativeAction):
+        result.update({
+            "dx": action.dx, "dy": action.dy,
             "target_element": action.target_element
         })
     elif isinstance(action, (ClickNowAction, DoubleClickNowAction, RightClickNowAction)):

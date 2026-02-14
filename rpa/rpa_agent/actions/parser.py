@@ -13,7 +13,7 @@ from .definitions import (
     Action, ActionType, AnyAction,
     ClickAction, DoubleClickAction, RightClickAction,
     DragAction, ScrollAction, HoverAction,
-    MoveMouseAction, ClickNowAction, DoubleClickNowAction, RightClickNowAction,
+    MoveMouseAction, MoveToAction, MoveRelativeAction, ClickNowAction, DoubleClickNowAction, RightClickNowAction,
     TypeAction, KeyAction, HotkeyAction,
     FocusWindowAction, WaitAction, ScreenshotAction,
     DoneAction, FailAction
@@ -152,6 +152,26 @@ class ActionParser:
                     confidence=confidence,
                     action_type=ActionType.MOVE_MOUSE
                 ), "Parsed move mouse action"
+
+            elif action_type == "move_to":
+                return MoveToAction(
+                    x=int(data.get("x", 0)),
+                    y=int(data.get("y", 0)),
+                    target_element=data.get("target_element", data.get("target", "")),
+                    reasoning=reasoning,
+                    confidence=confidence,
+                    action_type=ActionType.MOVE_TO
+                ), "Parsed move to action"
+
+            elif action_type == "move_relative":
+                return MoveRelativeAction(
+                    dx=int(data.get("dx", 0)),
+                    dy=int(data.get("dy", 0)),
+                    target_element=data.get("target_element", data.get("target", "")),
+                    reasoning=reasoning,
+                    confidence=confidence,
+                    action_type=ActionType.MOVE_RELATIVE
+                ), "Parsed move relative action"
 
             elif action_type == "click_now":
                 return ClickNowAction(

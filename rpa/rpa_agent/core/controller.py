@@ -113,6 +113,16 @@ class INPUT(ctypes.Structure):
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
 
+# Enable Per-Monitor DPI awareness for accurate screen coordinates
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+except Exception:
+    # Fall back to system DPI aware if per-monitor fails
+    try:
+        user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
 # Get screen metrics
 SM_CXSCREEN = 0
 SM_CYSCREEN = 1
@@ -321,6 +331,30 @@ class UIController:
 
         self._human_delay(0.01, 0.02)
         return Point(x, y)
+
+    def move_relative(self, dx: int, dy: int, duration: Optional[float] = None) -> Point:
+        """
+        Move mouse RELATIVE to current position by (dx, dy) pixels.
+
+        This is DPI-independent as it moves by pixel offset from current position.
+
+        Args:
+            dx: Horizontal offset (positive = right, negative = left)
+            dy: Vertical offset (positive = down, negative = up)
+            duration: Movement duration (uses default if None)
+
+        Returns:
+            Final mouse position
+        """
+        current = self.mouse_position
+        target_x = current.x + dx
+        target_y = current.y + dy
+
+        # Clamp to screen boundaries
+        target_x = max(self.SAFE_MARGIN, min(target_x, self._screen_width - self.SAFE_MARGIN))
+        target_y = max(self.SAFE_MARGIN, min(target_y, self._screen_height - self.SAFE_MARGIN))
+
+        return self.move_to(target_x, target_y, duration=duration)
 
     def click(
         self,
