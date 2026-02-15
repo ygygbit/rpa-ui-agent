@@ -57,13 +57,12 @@ def get_cursor_position() -> Tuple[int, int]:
 
 def draw_radial_overlay(img: Image.Image, cursor_pos: Tuple[int, int], scale: float = 1.0) -> Image.Image:
     """
-    Draw a radial coordinate overlay centered on the cursor position.
+    Draw a minimal radial coordinate overlay centered on the cursor position.
 
-    This creates a polar coordinate system with:
-    - Distance rings at 50, 100, 150, 200, 300 pixels from cursor
-    - Cardinal direction indicators (up, down, left, right) with arrows
-    - Distance labels on rings
-    - NO axis margins - coordinates are relative to cursor
+    This creates a simple polar coordinate system with:
+    - Distance rings at 50, 100, 150, 200, 300 pixels from cursor (semi-transparent)
+    - Distance labels ONLY on the right side of each ring (to minimize clutter)
+    - NO direction arrows or labels (the cursor crosshair already shows position)
 
     Args:
         img: PIL Image to draw on (already captured screenshot)
@@ -73,8 +72,6 @@ def draw_radial_overlay(img: Image.Image, cursor_pos: Tuple[int, int], scale: fl
     Returns:
         Image with radial overlay (same dimensions as input)
     """
-    import math
-
     # Work on a copy with alpha
     img = img.copy()
     if img.mode != 'RGBA':
@@ -86,118 +83,37 @@ def draw_radial_overlay(img: Image.Image, cursor_pos: Tuple[int, int], scale: fl
 
     # Load fonts
     try:
-        font = ImageFont.truetype("arial.ttf", 14)
-        small_font = ImageFont.truetype("arial.ttf", 11)
+        small_font = ImageFont.truetype("arial.ttf", 10)
     except:
-        font = ImageFont.load_default()
-        small_font = font
+        small_font = ImageFont.load_default()
 
-    # Draw distance rings centered on cursor
+    # Draw distance rings centered on cursor - VERY transparent to not obscure content
     for distance, color in sorted(RING_COLORS.items()):
         radius = int(distance * scale)
 
-        # Draw the ring
+        # Draw the ring with low opacity (just visible enough to estimate distance)
         draw.ellipse(
             [cx - radius, cy - radius, cx + radius, cy + radius],
-            outline=(*color, 180),
-            width=2
+            outline=(*color, 80),  # Very low opacity (was 180)
+            width=1  # Thin line (was 2)
         )
 
-        # Draw distance label at multiple positions around the ring
-        # Place labels at 45-degree intervals on the ring
-        for angle_deg in [45, 135, 225, 315]:
-            angle_rad = math.radians(angle_deg)
-            label_x = cx + int(radius * math.cos(angle_rad))
-            label_y = cy + int(radius * math.sin(angle_rad))
+        # Draw distance label ONLY on the right side of each ring
+        label_x = cx + radius + 3
+        label_y = cy - 6
 
-            label = f"{distance}px"
-            bbox = draw.textbbox((0, 0), label, font=small_font)
-            w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-
-            # Check bounds
-            if 0 <= label_x - w//2 < img.width - w and 0 <= label_y - h//2 < img.height - h:
-                # Draw background for readability
-                draw.rectangle(
-                    [label_x - w//2 - 2, label_y - h//2 - 1,
-                     label_x + w//2 + 2, label_y + h//2 + 1],
-                    fill=(0, 0, 0, 200)
-                )
-                draw.text((label_x - w//2, label_y - h//2), label, fill=(*color, 255), font=small_font)
-
-    # Draw cardinal direction indicators with arrows
-    arrow_len = 30
-    for direction, (dx, dy) in [("up", (0, -1)), ("down", (0, 1)),
-                                 ("left", (-1, 0)), ("right", (1, 0))]:
-        color = DIRECTION_COLORS[direction]
-
-        # Calculate arrow start (at 300px ring) and direction
-        start_dist = 320  # Just outside the largest ring
-        end_dist = start_dist + arrow_len
-
-        start_x = cx + int(dx * start_dist)
-        start_y = cy + int(dy * start_dist)
-        end_x = cx + int(dx * end_dist)
-        end_y = cy + int(dy * end_dist)
-
-        # Check if arrow is within bounds
-        if (0 <= end_x < img.width and 0 <= end_y < img.height):
-            # Draw arrow line
-            draw.line([(start_x, start_y), (end_x, end_y)], fill=(*color, 220), width=3)
-
-            # Draw arrowhead
-            head_size = 8
-            if direction == "up":
-                draw.polygon([(end_x, end_y), (end_x - head_size, end_y + head_size),
-                              (end_x + head_size, end_y + head_size)], fill=(*color, 220))
-            elif direction == "down":
-                draw.polygon([(end_x, end_y), (end_x - head_size, end_y - head_size),
-                              (end_x + head_size, end_y - head_size)], fill=(*color, 220))
-            elif direction == "left":
-                draw.polygon([(end_x, end_y), (end_x + head_size, end_y - head_size),
-                              (end_x + head_size, end_y + head_size)], fill=(*color, 220))
-            elif direction == "right":
-                draw.polygon([(end_x, end_y), (end_x - head_size, end_y - head_size),
-                              (end_x - head_size, end_y + head_size)], fill=(*color, 220))
-
-            # Draw direction label
-            label_x = cx + int(dx * (end_dist + 25))
-            label_y = cy + int(dy * (end_dist + 25))
-            label = direction.upper()
-
-            bbox = draw.textbbox((0, 0), label, font=font)
-            w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-
-            if 0 <= label_x - w//2 < img.width - w and 0 <= label_y - h//2 < img.height - h:
-                draw.rectangle(
-                    [label_x - w//2 - 2, label_y - h//2 - 1,
-                     label_x + w//2 + 2, label_y + h//2 + 1],
-                    fill=(0, 0, 0, 200)
-                )
-                draw.text((label_x - w//2, label_y - h//2), label, fill=(*color, 255), font=font)
-
-    # Draw diagonal direction indicators (smaller)
-    for direction, (dx, dy) in [("up-left", (-0.707, -0.707)), ("up-right", (0.707, -0.707)),
-                                 ("down-left", (-0.707, 0.707)), ("down-right", (0.707, 0.707))]:
-        start_dist = 320
-        label_dist = 350
-
-        label_x = cx + int(dx * label_dist)
-        label_y = cy + int(dy * label_dist)
-
-        # Abbreviated labels for diagonals
-        abbrev = {"up-left": "UL", "up-right": "UR", "down-left": "DL", "down-right": "DR"}
-        label = abbrev[direction]
-
+        label = f"{distance}"
         bbox = draw.textbbox((0, 0), label, font=small_font)
         w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-        if 0 <= label_x - w//2 < img.width - w and 0 <= label_y - h//2 < img.height - h:
+        # Check bounds - only draw if within image
+        if label_x < img.width - w - 5:
+            # Small semi-transparent background
             draw.rectangle(
-                [label_x - w//2 - 2, label_y - h//2 - 1,
-                 label_x + w//2 + 2, label_y + h//2 + 1],
-                fill=(0, 0, 0, 180)
+                [label_x - 1, label_y - 1, label_x + w + 1, label_y + h + 1],
+                fill=(0, 0, 0, 120)
             )
-            draw.text((label_x - w//2, label_y - h//2), label, fill=(200, 200, 200, 255), font=small_font)
+            draw.text((label_x, label_y), label, fill=(*color, 200), font=small_font)
 
     return img
 

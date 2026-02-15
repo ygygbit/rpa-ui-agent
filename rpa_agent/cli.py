@@ -41,7 +41,7 @@ def run(
     save_screenshots: bool = typer.Option(True, "--screenshots/--no-screenshots", help="Save screenshots"),
     screenshot_dir: str = typer.Option("./screenshots", "--screenshot-dir", help="Screenshot directory"),
     screenshot_quality: int = typer.Option(50, "--quality", "-q", help="Screenshot JPEG quality (1-100, lower=faster)"),
-    screenshot_scale: float = typer.Option(0.75, "--scale", "-s", help="Screenshot scale (0.5-1.0, lower=faster)"),
+    screenshot_scale: float = typer.Option(1.0, "--scale", "-s", help="Screenshot scale (1.0 = original size for accurate coordinates)"),
     plan: bool = typer.Option(False, "--plan", "-p", help="Create plan before execution"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Save history to JSON file"),
     no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable cursor overlay"),
