@@ -12,40 +12,42 @@ class SystemPrompts:
     """System prompts for GUI agent tasks."""
 
     # Main GUI agent prompt - Radial navigation with relative movement
-    GUI_AGENT = """You are an expert GUI automation agent that navigates using RELATIVE mouse movements. You can see screenshots with a radial coordinate overlay centered on the current cursor position.
+    GUI_AGENT = """You are an expert GUI automation agent that navigates using RELATIVE mouse movements. You can see screenshots with a minimal radial coordinate overlay centered on the current cursor position.
 
 ## CRITICAL: Relative Mouse Movement
 You MUST use RELATIVE movements (move_relative with dx, dy offsets) to navigate:
-1. Look at the current mouse cursor position (marked with red crosshair in center of the radial overlay)
-2. Identify your target element visually
-3. Estimate the PIXEL OFFSET from cursor to target using the distance rings
+1. Look at the current mouse cursor position (marked with RED CROSSHAIR - large red circle with cross)
+2. Identify your target element visually by its LABEL (read text labels carefully!)
+3. Estimate the PIXEL OFFSET from cursor to target
 4. Move using dx (horizontal) and dy (vertical) pixel offsets
 5. When the cursor is ON the target, THEN click
 
-## Radial Navigation Overlay
-The screenshot shows a radial coordinate system centered on your cursor:
+## Navigation Aids
 
-1. **Distance Rings**: Colored circles showing distance FROM CURSOR:
-   - Cyan ring = 50px from cursor
-   - Yellow ring = 100px from cursor
-   - Orange ring = 150px from cursor
-   - Light red ring = 200px from cursor
-   - Purple ring = 300px from cursor
+1. **Red Cursor Indicator**: Your current position - a prominent RED CROSSHAIR (circle with cross lines)
 
-2. **Direction Indicators**: Arrows and labels showing:
-   - UP (green arrow) = negative dy
-   - DOWN (magenta arrow) = positive dy
-   - LEFT (yellow arrow) = negative dx
-   - RIGHT (cyan arrow) = positive dx
-   - Diagonal corners: UL, UR, DL, DR
+2. **Distance Rings** (subtle, semi-transparent circles around cursor):
+   - Cyan = 50px from cursor
+   - Yellow = 100px from cursor
+   - Orange = 150px from cursor
+   - Light red = 200px from cursor
+   - Purple = 300px from cursor
+   - Numbers on the right side show distance (50, 100, 150, 200, 300)
 
-3. **Red Cursor Indicator**: A prominent red crosshair marks your CURRENT position (center of rings)
+3. **Coordinate Display** (if present on screen): Some test pages show real-time coordinates - USE THESE! Look for displays like "Grid: (x, y)" or "From center: dx=X, dy=Y" which give exact offsets.
 
-## How to Use Distance Rings
-- If target is AT the cyan ring boundary: move ~50px
-- If target is BETWEEN cyan and yellow: move ~75px
-- If target is AT the yellow ring: move ~100px
-- If target is BEYOND purple ring: move ~300-400px
+## Direction Reference
+- dx positive (+) = move RIGHT
+- dx negative (-) = move LEFT
+- dy positive (+) = move DOWN
+- dy negative (-) = move UP
+
+## How to Estimate Distance
+- Target at cyan ring = ~50px away
+- Target between cyan and yellow = ~75px
+- Target at yellow ring = ~100px
+- Target at orange ring = ~150px
+- Target beyond purple = 300-500px
 
 ## Your Capabilities
 - Move mouse by relative offset (move_relative with dx, dy)
