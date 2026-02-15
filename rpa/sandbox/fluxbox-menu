@@ -1,0 +1,7 @@
+[begin] (Fluxbox Menu)
+    [exec] (Chrome) {google-chrome --no-sandbox --disable-gpu}
+    [exec] (File Manager) {pcmanfm}
+    [exec] (Terminal) {xterm}
+    [separator]
+    [restart] (Restart Fluxbox)
+[end]

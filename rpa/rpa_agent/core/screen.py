@@ -1,6 +1,10 @@
 """
-Screen capture module using mss for fast, cross-platform screenshots.
+Screen capture module with Windows GDI support for RDP compatibility.
 Includes mouse cursor overlay and navigation aids for human-like navigation.
+
+Supports two capture methods:
+1. Windows GDI (default) - Works reliably over RDP/Remote Desktop
+2. mss library (fallback) - Fast cross-platform capture for local sessions
 """
 
 import base64
@@ -16,11 +20,17 @@ import mss
 from PIL import Image, ImageDraw, ImageFont
 
 
-# Windows API for cursor position
+# Windows API handles
 user32 = ctypes.windll.user32
+gdi32 = ctypes.windll.gdi32
+
+# GDI constants
+SRCCOPY = 0x00CC0020
+DIB_RGB_COLORS = 0
+BI_RGB = 0
 
 # Enable Per-Monitor DPI awareness for accurate screen capture coordinates
-# This MUST be called before any mss capture to get physical pixel coordinates
+# This MUST be called before any capture to get physical pixel coordinates
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
 except Exception:
@@ -29,6 +39,121 @@ except Exception:
         user32.SetProcessDPIAware()
     except Exception:
         pass
+
+
+class BITMAPINFOHEADER(ctypes.Structure):
+    """Windows BITMAPINFOHEADER structure for GDI capture."""
+    _fields_ = [
+        ('biSize', ctypes.c_uint32),
+        ('biWidth', ctypes.c_int32),
+        ('biHeight', ctypes.c_int32),
+        ('biPlanes', ctypes.c_uint16),
+        ('biBitCount', ctypes.c_uint16),
+        ('biCompression', ctypes.c_uint32),
+        ('biSizeImage', ctypes.c_uint32),
+        ('biXPelsPerMeter', ctypes.c_int32),
+        ('biYPelsPerMeter', ctypes.c_int32),
+        ('biClrUsed', ctypes.c_uint32),
+        ('biClrImportant', ctypes.c_uint32),
+    ]
+
+
+class BITMAPINFO(ctypes.Structure):
+    """Windows BITMAPINFO structure for GDI capture."""
+    _fields_ = [
+        ('bmiHeader', BITMAPINFOHEADER),
+        ('bmiColors', ctypes.c_uint32 * 3),
+    ]
+
+
+def capture_screen_gdi(region: Optional[Tuple[int, int, int, int]] = None) -> Optional[Image.Image]:
+    """
+    Capture the screen using Windows GDI.
+
+    This method works reliably over RDP/Remote Desktop sessions.
+
+    Args:
+        region: Optional (left, top, width, height) tuple for region capture.
+                If None, captures the entire primary monitor.
+
+    Returns:
+        PIL Image of the captured screen, or None if capture fails.
+    """
+    try:
+        # Get screen dimensions
+        if region:
+            left, top, width, height = region
+        else:
+            left = 0
+            top = 0
+            width = user32.GetSystemMetrics(0)  # SM_CXSCREEN
+            height = user32.GetSystemMetrics(1)  # SM_CYSCREEN
+
+        # Get device context for the entire screen
+        hdesktop = user32.GetDesktopWindow()
+        desktop_dc = user32.GetWindowDC(hdesktop)
+
+        if not desktop_dc:
+            return None
+
+        # Create a compatible DC and bitmap
+        compatible_dc = gdi32.CreateCompatibleDC(desktop_dc)
+        if not compatible_dc:
+            user32.ReleaseDC(hdesktop, desktop_dc)
+            return None
+
+        bitmap = gdi32.CreateCompatibleBitmap(desktop_dc, width, height)
+        if not bitmap:
+            gdi32.DeleteDC(compatible_dc)
+            user32.ReleaseDC(hdesktop, desktop_dc)
+            return None
+
+        # Select the bitmap into the compatible DC
+        old_bitmap = gdi32.SelectObject(compatible_dc, bitmap)
+
+        # Copy screen content to our bitmap
+        gdi32.BitBlt(
+            compatible_dc, 0, 0, width, height,
+            desktop_dc, left, top,
+            SRCCOPY
+        )
+
+        # Set up BITMAPINFO structure
+        bmi = BITMAPINFO()
+        bmi.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+        bmi.bmiHeader.biWidth = width
+        bmi.bmiHeader.biHeight = -height  # Negative for top-down DIB
+        bmi.bmiHeader.biPlanes = 1
+        bmi.bmiHeader.biBitCount = 32
+        bmi.bmiHeader.biCompression = BI_RGB
+        bmi.bmiHeader.biSizeImage = width * height * 4
+
+        # Create buffer for pixel data
+        buffer = ctypes.create_string_buffer(width * height * 4)
+
+        # Get the bitmap bits
+        gdi32.GetDIBits(
+            compatible_dc, bitmap, 0, height,
+            buffer, ctypes.byref(bmi), DIB_RGB_COLORS
+        )
+
+        # Clean up GDI objects
+        gdi32.SelectObject(compatible_dc, old_bitmap)
+        gdi32.DeleteObject(bitmap)
+        gdi32.DeleteDC(compatible_dc)
+        user32.ReleaseDC(hdesktop, desktop_dc)
+
+        # Convert to PIL Image (BGRA format)
+        img = Image.frombuffer('RGBA', (width, height), buffer, 'raw', 'BGRA', 0, 1)
+
+        # Convert to RGB (drop alpha)
+        img = img.convert('RGB')
+
+        return img
+
+    except Exception as e:
+        print(f"GDI capture failed: {e}")
+        return None
 
 # Colors for navigation aids
 CURSOR_COLOR = (255, 0, 0)  # Red for cursor indicator
@@ -250,6 +375,60 @@ def draw_cursor_on_image(img: Image.Image, cursor_pos: Tuple[int, int], scale: f
     return img
 
 
+def draw_coordinate_display(img: Image.Image, cursor_pos: Tuple[int, int], screen_size: Tuple[int, int], scale: float = 1.0) -> Image.Image:
+    """
+    Draw a coordinate display panel showing cursor position and screen info.
+
+    This provides explicit coordinate information to help VLM calculate offsets.
+
+    Args:
+        img: PIL Image to draw on
+        cursor_pos: (x, y) position of cursor on screen (original, unscaled)
+        screen_size: (width, height) of screen
+        scale: Scale factor applied to the image
+
+    Returns:
+        Image with coordinate display overlay
+    """
+    img = img.copy()
+    draw = ImageDraw.Draw(img, 'RGBA')
+
+    # Try to load a readable font
+    try:
+        font = ImageFont.truetype("arial.ttf", 14)
+        small_font = ImageFont.truetype("arial.ttf", 11)
+    except:
+        font = ImageFont.load_default()
+        small_font = font
+
+    # Position the display in top-left corner
+    panel_x = 10
+    panel_y = 10
+    panel_width = 200
+    panel_height = 60
+
+    # Draw semi-transparent background
+    draw.rectangle(
+        [panel_x, panel_y, panel_x + panel_width, panel_y + panel_height],
+        fill=(0, 0, 0, 200)
+    )
+    draw.rectangle(
+        [panel_x, panel_y, panel_x + panel_width, panel_y + panel_height],
+        outline=(100, 100, 100, 255),
+        width=1
+    )
+
+    # Draw cursor coordinates
+    cursor_text = f"CURSOR: ({cursor_pos[0]}, {cursor_pos[1]})"
+    draw.text((panel_x + 10, panel_y + 8), cursor_text, fill=(0, 255, 0, 255), font=font)
+
+    # Draw screen size
+    screen_text = f"Screen: {screen_size[0]} x {screen_size[1]}"
+    draw.text((panel_x + 10, panel_y + 30), screen_text, fill=(200, 200, 200, 255), font=small_font)
+
+    return img
+
+
 @dataclass
 class ScreenInfo:
     """Information about the captured screen."""
@@ -261,23 +440,27 @@ class ScreenInfo:
 
 class ScreenCapture:
     """
-    Fast screen capture using mss library.
+    Screen capture with Windows GDI support for RDP compatibility.
 
     Supports:
+    - Windows GDI capture (default) - Works over RDP/Remote Desktop
+    - mss library capture (fallback) - Fast cross-platform capture
     - Full screen capture
     - Region capture
     - Multi-monitor support
     - Base64 encoding for VLM API
     """
 
-    def __init__(self, monitor_index: int = 1):
+    def __init__(self, monitor_index: int = 1, use_gdi: bool = True):
         """
         Initialize screen capture.
 
         Args:
             monitor_index: Monitor to capture (0 = all monitors, 1 = primary, 2+ = secondary)
+            use_gdi: If True, use Windows GDI capture (works over RDP). If False, use mss.
         """
         self.monitor_index = monitor_index
+        self.use_gdi = use_gdi
         self._sct = mss.mss()
 
     @property
@@ -288,32 +471,20 @@ class ScreenCapture:
     @property
     def screen_size(self) -> Tuple[int, int]:
         """Get the size of the current monitor."""
-        mon = self._sct.monitors[self.monitor_index]
-        return mon["width"], mon["height"]
+        if self.use_gdi:
+            width = user32.GetSystemMetrics(0)  # SM_CXSCREEN
+            height = user32.GetSystemMetrics(1)  # SM_CYSCREEN
+            return width, height
+        else:
+            mon = self._sct.monitors[self.monitor_index]
+            return mon["width"], mon["height"]
 
-    def capture(
-        self,
-        region: Optional[Tuple[int, int, int, int]] = None,
-        scale: float = 1.0,
-        include_cursor: bool = True,
-        include_radial_overlay: bool = True,
-        grid_spacing: int = 50  # Unused, kept for compatibility
-    ) -> Image.Image:
-        """
-        Capture the screen or a region with radial coordinate overlay.
+    def _capture_with_gdi(self, region: Optional[Tuple[int, int, int, int]] = None) -> Optional[Image.Image]:
+        """Capture screen using Windows GDI (RDP-compatible)."""
+        return capture_screen_gdi(region)
 
-        Args:
-            region: Optional (left, top, width, height) tuple for region capture
-            scale: Scale factor for the output image (0.5 = half size)
-            include_cursor: Whether to draw cursor indicator on screenshot
-            include_radial_overlay: Whether to draw radial distance rings and direction indicators
-
-        Returns:
-            PIL Image of the captured screen (NO margins added - same size as screen)
-        """
-        # Get cursor position BEFORE capturing (for accuracy)
-        cursor_pos = get_cursor_position() if (include_cursor or include_radial_overlay) else None
-
+    def _capture_with_mss(self, region: Optional[Tuple[int, int, int, int]] = None) -> Image.Image:
+        """Capture screen using mss library (fast, cross-platform)."""
         if region:
             monitor = {
                 "left": region[0],
@@ -324,11 +495,48 @@ class ScreenCapture:
         else:
             monitor = self._sct.monitors[self.monitor_index]
 
-        # Capture screenshot
         sct_img = self._sct.grab(monitor)
-
-        # Convert to PIL Image (BGRA to RGB) then to RGBA for transparency support
         img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+        return img
+
+    def capture(
+        self,
+        region: Optional[Tuple[int, int, int, int]] = None,
+        scale: float = 1.0,
+        include_cursor: bool = True,
+        include_radial_overlay: bool = True,
+        include_coordinate_display: bool = False,
+        grid_spacing: int = 50  # Unused, kept for compatibility
+    ) -> Image.Image:
+        """
+        Capture the screen or a region with radial coordinate overlay.
+
+        Uses Windows GDI by default (works over RDP), falls back to mss if GDI fails.
+
+        Args:
+            region: Optional (left, top, width, height) tuple for region capture
+            scale: Scale factor for the output image (0.5 = half size)
+            include_cursor: Whether to draw cursor indicator on screenshot
+            include_radial_overlay: Whether to draw radial distance rings and direction indicators
+            include_coordinate_display: Whether to show cursor coordinates numerically on screen
+
+        Returns:
+            PIL Image of the captured screen (NO margins added - same size as screen)
+        """
+        # Get cursor position BEFORE capturing (for accuracy)
+        cursor_pos = get_cursor_position() if (include_cursor or include_radial_overlay or include_coordinate_display) else None
+        screen_size = self.screen_size
+
+        # Try GDI capture first (works over RDP), fall back to mss
+        img = None
+        if self.use_gdi:
+            img = self._capture_with_gdi(region)
+
+        if img is None:
+            # Fallback to mss
+            img = self._capture_with_mss(region)
+
+        # Convert to RGBA for transparency support
         img = img.convert("RGBA")
 
         # Scale if needed
@@ -344,10 +552,39 @@ class ScreenCapture:
         if include_cursor and cursor_pos:
             img = draw_cursor_on_image(img, cursor_pos, scale, margin=0)
 
+        # Draw coordinate display panel
+        if include_coordinate_display and cursor_pos:
+            img = draw_coordinate_display(img, cursor_pos, screen_size, scale)
+
         # Convert back to RGB for saving
         img = img.convert("RGB")
 
         return img
+
+    def capture_with_overlay(
+        self,
+        scale: float = 1.0,
+        include_coordinates: bool = True
+    ) -> Image.Image:
+        """
+        Capture screen with full overlay including coordinate display.
+
+        This is the recommended method for VLM-guided automation as it
+        provides explicit coordinate information.
+
+        Args:
+            scale: Scale factor for the output image
+            include_coordinates: Whether to show cursor coordinates numerically
+
+        Returns:
+            PIL Image with cursor, radial overlay, and coordinate display
+        """
+        return self.capture(
+            scale=scale,
+            include_cursor=True,
+            include_radial_overlay=True,
+            include_coordinate_display=include_coordinates
+        )
 
     def capture_to_base64(
         self,

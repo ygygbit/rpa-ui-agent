@@ -1,0 +1,24 @@
+services:
+  windows:
+    image: dockurr/windows
+    container_name: rpa-windows-sandbox
+    environment:
+      VERSION: "11"        # Windows 11
+      RAM_SIZE: "4G"       # 4GB RAM
+      CPU_CORES: "2"       # 2 CPU cores
+      DISK_SIZE: "64G"     # 64GB disk
+    devices:
+      - /dev/kvm           # KVM acceleration (required)
+    cap_add:
+      - NET_ADMIN          # Network capabilities
+    ports:
+      - "8006:8006"        # Web VNC viewer (http://localhost:8006)
+      - "3389:3389/tcp"    # RDP access
+      - "3389:3389/udp"    # RDP access
+    volumes:
+      - windows_data:/storage   # Persistent storage
+    stop_grace_period: 2m
+    restart: unless-stopped
+
+volumes:
+  windows_data:
