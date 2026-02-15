@@ -511,50 +511,85 @@ def sandbox_run(
     task: str = typer.Argument(..., help="Task to accomplish"),
     max_steps: int = typer.Option(50, "--max-steps", "-n", help="Maximum steps"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Don't execute actions"),
+    step_delay: float = typer.Option(0.5, "--delay", "-d", help="Delay between steps"),
+    save_screenshots: bool = typer.Option(True, "--screenshots/--no-screenshots", help="Save screenshots"),
+    screenshot_dir: str = typer.Option("./screenshots", "--screenshot-dir", help="Screenshot directory"),
+    model: str = typer.Option(
+        DEFAULT_MODEL,
+        "--model",
+        "-m",
+        help=f"Model name. Available: {', '.join(AVAILABLE_MODELS)}",
+        callback=model_callback
+    ),
+    base_url: str = typer.Option(
+        "http://localhost:23333/api/anthropic",
+        "--base-url",
+        help="VLM API base URL"
+    ),
+    sandbox_url: str = typer.Option(
+        "http://localhost:8000",
+        "--sandbox-url",
+        help="Sandbox API URL"
+    ),
 ):
     """
     Run a task in the sandbox environment.
+
+    The agent runs locally on Windows but captures screenshots and
+    executes actions inside the Docker sandbox via HTTP API.
     """
     import httpx
-    import time
 
-    console.print(f"[bold]Running task in sandbox:[/] {task}")
+    console.print(Panel.fit(
+        f"[bold blue]RPA UI Agent - Sandbox Mode[/]\n"
+        f"Task: {task}\n"
+        f"[dim]Model: {model}[/]",
+        border_style="blue"
+    ))
 
+    # Check sandbox is running
     try:
-        # Submit task
-        response = httpx.post(
-            "http://localhost:8000/task/run",
-            json={"task": task, "max_steps": max_steps, "dry_run": dry_run},
-            timeout=10
-        )
-
+        response = httpx.get(f"{sandbox_url}/status", timeout=5)
         if response.status_code != 200:
-            console.print(f"[red]Failed to submit task: {response.text}[/]")
+            console.print("[red]Sandbox not responding properly[/]")
             return
-
-        console.print("[green]Task submitted[/]")
-        console.print("[dim]View progress at: http://localhost:6080[/]")
-
-        # Poll for completion
-        with console.status("[bold green]Running task...") as status:
-            while True:
-                time.sleep(2)
-                status_response = httpx.get("http://localhost:8000/task/status", timeout=5)
-                if status_response.status_code == 200:
-                    task_status = status_response.json()
-                    if not task_status["running"]:
-                        break
-
-        # Show result
-        if task_status.get("result"):
-            console.print("\n[bold]Result:[/]")
-            console.print(task_status["result"])
-        else:
-            console.print("[green]Task completed[/]")
-
+        status = response.json()
+        console.print(f"[green]Sandbox connected:[/] {status['screen_size']['width']}x{status['screen_size']['height']}")
     except httpx.ConnectError:
         console.print("[red]Cannot connect to sandbox. Is it running?[/]")
         console.print("[dim]Start with: rpa-agent sandbox up[/]")
+        return
+
+    # Create configuration with sandbox mode
+    vlm_config = VLMConfig(
+        base_url=base_url,
+        model=model
+    )
+
+    config = AgentConfig(
+        vlm_config=vlm_config,
+        max_steps=max_steps,
+        step_delay=step_delay,
+        dry_run=dry_run,
+        save_screenshots=save_screenshots,
+        screenshot_dir=Path(screenshot_dir),
+        sandbox_mode=True,
+        sandbox_url=sandbox_url,
+    )
+
+    # Create and run agent
+    agent = GUIAgent(config=config, console=console)
+
+    try:
+        steps = agent.run(task)
+
+        # Summary
+        successful = sum(1 for s in steps if s.action_result and s.action_result.success)
+        console.print(f"\n[bold]Summary:[/] {successful}/{len(steps)} steps successful")
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted by user[/]")
+        agent.stop()
 
 
 @sandbox_app.command("logs")

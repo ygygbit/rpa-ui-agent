@@ -99,6 +99,10 @@ class AgentConfig:
     max_retries: int = 3
     retry_delay: float = 1.0
 
+    # Sandbox mode - operate inside Docker sandbox via HTTP API
+    sandbox_mode: bool = False
+    sandbox_url: str = "http://localhost:8000"
+
 
 @dataclass
 class AgentStep:
@@ -138,10 +142,23 @@ class GUIAgent:
         self.config = config or AgentConfig()
         self.console = console or Console()
 
-        # Initialize components
-        self.screen = ScreenCapture()
-        self.controller = UIController()
-        self.window_manager = WindowManager()
+        # Initialize components based on mode
+        if self.config.sandbox_mode:
+            # Sandbox mode: use remote screen/controller via HTTP API
+            from .core.remote_screen import RemoteScreenCapture
+            from .core.remote_controller import RemoteController
+            self.screen = RemoteScreenCapture(self.config.sandbox_url)
+            self.controller = RemoteController(self.config.sandbox_url)
+            self.window_manager = None  # Not supported in sandbox mode
+            # Disable overlays in sandbox mode (they would show on Windows, not sandbox)
+            self.config.show_cursor_overlay = False
+            self.config.show_action_notifier = False
+        else:
+            # Local Windows mode
+            self.screen = ScreenCapture()
+            self.controller = UIController()
+            self.window_manager = WindowManager()
+
         self.vlm = VLMClient(self.config.vlm_config)
         self.parser = ActionParser()
 
@@ -276,6 +293,12 @@ class GUIAgent:
                 self.controller.hotkey(*action.keys)
 
             elif isinstance(action, FocusWindowAction):
+                if self.window_manager is None:
+                    return ActionResult(
+                        success=False,
+                        action=action,
+                        error="Window focus not supported in sandbox mode"
+                    )
                 success = self.window_manager.focus_window_by_title(action.window_title)
                 if not success:
                     return ActionResult(
