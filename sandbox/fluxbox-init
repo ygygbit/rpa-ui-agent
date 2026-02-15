@@ -1,0 +1,5 @@
+session.screen0.toolbar.visible: false
+session.screen0.tabs.usePixmap: false
+session.screen0.toolbar.widthPercent: 0
+session.menuFile: ~/.fluxbox/menu
+session.styleFile: /usr/share/fluxbox/styles/ubuntu-light

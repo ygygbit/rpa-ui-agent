@@ -303,5 +303,278 @@ def models():
     console.print("[dim]Example: rpa-agent run \"task\" --model claude-opus-4.6[/]\n")
 
 
+# ==================== Sandbox Commands ====================
+
+sandbox_app = typer.Typer(
+    name="sandbox",
+    help="Run RPA agent in isolated Docker sandbox (1080p, Chrome pre-installed)"
+)
+app.add_typer(sandbox_app, name="sandbox")
+
+
+@sandbox_app.command("up")
+def sandbox_up(
+    detach: bool = typer.Option(True, "--detach/--no-detach", "-d", help="Run in background"),
+    build: bool = typer.Option(False, "--build", "-b", help="Rebuild container image"),
+):
+    """
+    Start the sandbox environment.
+
+    After starting, access:
+    - Web preview: http://localhost:6080
+    - VNC: localhost:5900
+    - API: http://localhost:8000
+    """
+    import subprocess
+    import os
+
+    project_root = Path(__file__).parent.parent
+
+    console.print(Panel.fit(
+        "[bold blue]RPA Sandbox Environment[/]\n"
+        "Starting Docker container with:\n"
+        "• 1920x1080 virtual display\n"
+        "• Chrome browser pre-installed\n"
+        "• VNC/noVNC preview access",
+        border_style="blue"
+    ))
+
+    cmd = ["docker", "compose", "up"]
+    if detach:
+        cmd.append("-d")
+    if build:
+        cmd.append("--build")
+    cmd.append("rpa-sandbox")
+
+    console.print(f"[dim]Running: {' '.join(cmd)}[/]")
+
+    result = subprocess.run(cmd, cwd=project_root)
+
+    if result.returncode == 0:
+        console.print("\n[green]Sandbox started successfully![/]")
+        console.print("\n[bold]Access points:[/]")
+        console.print("  • [cyan]Web Preview:[/] http://localhost:6080")
+        console.print("  • [cyan]VNC Client:[/] localhost:5900")
+        console.print("  • [cyan]API Server:[/] http://localhost:8000")
+        console.print("  • [cyan]Screenshot:[/] http://localhost:8000/screenshot")
+        console.print("\n[dim]Stop with: rpa-agent sandbox down[/]")
+    else:
+        console.print("[red]Failed to start sandbox[/]")
+
+
+@sandbox_app.command("down")
+def sandbox_down(
+    volumes: bool = typer.Option(False, "--volumes", "-v", help="Remove volumes too"),
+):
+    """
+    Stop and remove the sandbox environment.
+    """
+    import subprocess
+
+    project_root = Path(__file__).parent.parent
+
+    cmd = ["docker", "compose", "down"]
+    if volumes:
+        cmd.append("-v")
+
+    console.print("[dim]Stopping sandbox...[/]")
+    result = subprocess.run(cmd, cwd=project_root)
+
+    if result.returncode == 0:
+        console.print("[green]Sandbox stopped and removed[/]")
+    else:
+        console.print("[red]Failed to stop sandbox[/]")
+
+
+@sandbox_app.command("status")
+def sandbox_status():
+    """
+    Show sandbox status.
+    """
+    import subprocess
+    import httpx
+
+    project_root = Path(__file__).parent.parent
+
+    # Check Docker container status
+    result = subprocess.run(
+        ["docker", "compose", "ps", "--format", "json"],
+        cwd=project_root,
+        capture_output=True,
+        text=True
+    )
+
+    console.print("\n[bold]Sandbox Status[/]\n")
+
+    # Check if container is running
+    container_running = False
+    if result.returncode == 0 and result.stdout.strip():
+        try:
+            # Docker compose ps outputs one JSON object per line
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    container_info = json.loads(line)
+                    if 'rpa-sandbox' in container_info.get('Name', ''):
+                        state = container_info.get('State', 'unknown')
+                        console.print(f"[cyan]Container:[/] {state}")
+                        container_running = state == 'running'
+        except json.JSONDecodeError:
+            console.print("[yellow]Could not parse container status[/]")
+    else:
+        console.print("[dim]Container not found[/]")
+
+    # Check API server
+    if container_running:
+        try:
+            response = httpx.get("http://localhost:8000/status", timeout=5)
+            if response.status_code == 200:
+                status = response.json()
+                console.print(f"[cyan]API Server:[/] [green]running[/]")
+                console.print(f"[cyan]Screen Size:[/] {status['screen_size']['width']}x{status['screen_size']['height']}")
+                console.print(f"[cyan]Chrome:[/] {'running' if status['chrome_running'] else 'not running'}")
+                console.print(f"[cyan]Task Running:[/] {status['task_running']}")
+        except Exception:
+            console.print("[cyan]API Server:[/] [yellow]not responding (may still be starting)[/]")
+
+    console.print("\n[bold]Access Points:[/]")
+    console.print("  • Web Preview: http://localhost:6080")
+    console.print("  • API Server: http://localhost:8000")
+    console.print("  • Screenshot: http://localhost:8000/screenshot")
+
+
+@sandbox_app.command("screenshot")
+def sandbox_screenshot(
+    output: str = typer.Option("sandbox_screenshot.png", "--output", "-o", help="Output file"),
+    open_browser: bool = typer.Option(False, "--open", help="Open in browser instead of saving"),
+):
+    """
+    Capture screenshot from sandbox.
+    """
+    import httpx
+    import webbrowser
+
+    if open_browser:
+        webbrowser.open("http://localhost:8000/screenshot")
+        console.print("[green]Opened screenshot in browser[/]")
+        return
+
+    try:
+        response = httpx.get("http://localhost:8000/screenshot", timeout=10)
+        if response.status_code == 200:
+            with open(output, "wb") as f:
+                f.write(response.content)
+            console.print(f"[green]Screenshot saved to: {output}[/]")
+        else:
+            console.print(f"[red]Failed to capture screenshot: {response.status_code}[/]")
+    except httpx.ConnectError:
+        console.print("[red]Cannot connect to sandbox. Is it running?[/]")
+        console.print("[dim]Start with: rpa-agent sandbox up[/]")
+
+
+@sandbox_app.command("chrome")
+def sandbox_chrome(
+    url: str = typer.Argument("https://www.google.com", help="URL to open"),
+):
+    """
+    Open Chrome in sandbox with specified URL.
+    """
+    import httpx
+
+    try:
+        response = httpx.post(
+            "http://localhost:8000/chrome/start",
+            params={"url": url},
+            timeout=10
+        )
+        if response.status_code == 200:
+            result = response.json()
+            console.print(f"[green]Chrome started: {url}[/]")
+            console.print("[dim]View at: http://localhost:6080[/]")
+        else:
+            console.print(f"[red]Failed: {response.text}[/]")
+    except httpx.ConnectError:
+        console.print("[red]Cannot connect to sandbox. Is it running?[/]")
+
+
+@sandbox_app.command("preview")
+def sandbox_preview():
+    """
+    Open noVNC preview in browser.
+    """
+    import webbrowser
+    webbrowser.open("http://localhost:6080/vnc.html?autoconnect=true")
+    console.print("[green]Opened sandbox preview in browser[/]")
+
+
+@sandbox_app.command("run")
+def sandbox_run(
+    task: str = typer.Argument(..., help="Task to accomplish"),
+    max_steps: int = typer.Option(50, "--max-steps", "-n", help="Maximum steps"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Don't execute actions"),
+):
+    """
+    Run a task in the sandbox environment.
+    """
+    import httpx
+    import time
+
+    console.print(f"[bold]Running task in sandbox:[/] {task}")
+
+    try:
+        # Submit task
+        response = httpx.post(
+            "http://localhost:8000/task/run",
+            json={"task": task, "max_steps": max_steps, "dry_run": dry_run},
+            timeout=10
+        )
+
+        if response.status_code != 200:
+            console.print(f"[red]Failed to submit task: {response.text}[/]")
+            return
+
+        console.print("[green]Task submitted[/]")
+        console.print("[dim]View progress at: http://localhost:6080[/]")
+
+        # Poll for completion
+        with console.status("[bold green]Running task...") as status:
+            while True:
+                time.sleep(2)
+                status_response = httpx.get("http://localhost:8000/task/status", timeout=5)
+                if status_response.status_code == 200:
+                    task_status = status_response.json()
+                    if not task_status["running"]:
+                        break
+
+        # Show result
+        if task_status.get("result"):
+            console.print("\n[bold]Result:[/]")
+            console.print(task_status["result"])
+        else:
+            console.print("[green]Task completed[/]")
+
+    except httpx.ConnectError:
+        console.print("[red]Cannot connect to sandbox. Is it running?[/]")
+        console.print("[dim]Start with: rpa-agent sandbox up[/]")
+
+
+@sandbox_app.command("logs")
+def sandbox_logs(
+    follow: bool = typer.Option(False, "--follow", "-f", help="Follow log output"),
+):
+    """
+    View sandbox container logs.
+    """
+    import subprocess
+
+    project_root = Path(__file__).parent.parent
+
+    cmd = ["docker", "compose", "logs"]
+    if follow:
+        cmd.append("-f")
+    cmd.append("rpa-sandbox")
+
+    subprocess.run(cmd, cwd=project_root)
+
+
 if __name__ == "__main__":
     app()
