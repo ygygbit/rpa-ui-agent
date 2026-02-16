@@ -12,6 +12,109 @@ This project implements a multimodal AI agent that combines:
 
 The agent can understand arbitrary GUI interfaces without requiring pre-defined selectors, element IDs, or accessibility APIs—making it universally applicable to any application.
 
+## Quick Start
+
+### Prerequisites
+- Python 3.10+
+- Windows (for win32 window management) or Docker (for sandbox mode)
+- VLM API access (custom endpoint or Anthropic API key)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/layoffhuman/rpa-ui-agent.git
+cd rpa-ui-agent
+
+# Install with uv (recommended)
+uv sync
+
+# Or with pip
+pip install -e .
+```
+
+### Configuration
+
+The agent supports two API configuration modes:
+
+#### Option 1: Official Anthropic API (Recommended for most users)
+
+Set your Anthropic API key as an environment variable:
+
+```bash
+# Windows (PowerShell)
+$env:ANTHROPIC_API_KEY = "sk-ant-your-api-key"
+
+# Windows (Command Prompt)
+set ANTHROPIC_API_KEY=sk-ant-your-api-key
+
+# Linux/macOS
+export ANTHROPIC_API_KEY="sk-ant-your-api-key"
+```
+
+**Recommended models:**
+- `claude-opus-4-20250514` - Best visual understanding (recommended)
+- `claude-sonnet-4-20250514` - Fast and capable
+
+#### Option 2: Custom Endpoint (For self-hosted or proxy servers)
+
+If you have a custom Anthropic-compatible API endpoint:
+
+```bash
+# Windows (PowerShell)
+$env:RPA_VLM_BASE_URL = "http://localhost:23333/api/anthropic"
+$env:RPA_VLM_API_KEY = "your-api-key"
+$env:RPA_VLM_MODEL = "claude-opus-4.6-fast"
+
+# Linux/macOS
+export RPA_VLM_BASE_URL="http://localhost:23333/api/anthropic"
+export RPA_VLM_API_KEY="your-api-key"
+export RPA_VLM_MODEL="claude-opus-4.6-fast"
+```
+
+**Recommended models for custom endpoints:**
+- `claude-opus-4.6-fast` - Fast inference (recommended)
+- `claude-opus-4.6` - Standard model
+- `claude-opus-4.6-1m` - Extended context
+
+#### Using a .env file
+
+Create a `.env` file in the project root:
+
+```env
+# Option 1: Official Anthropic API
+ANTHROPIC_API_KEY=sk-ant-your-api-key
+
+# Option 2: Custom endpoint (takes priority if set)
+# RPA_VLM_BASE_URL=http://localhost:23333/api/anthropic
+# RPA_VLM_API_KEY=your-api-key
+# RPA_VLM_MODEL=claude-opus-4.6-fast
+```
+
+### Environment Variables Reference
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ANTHROPIC_API_KEY` | Yes* | Official Anthropic API key |
+| `RPA_VLM_BASE_URL` | No | Custom API endpoint URL (overrides Anthropic) |
+| `RPA_VLM_API_KEY` | No | API key for custom endpoint |
+| `RPA_VLM_MODEL` | No | Model name to use (auto-selected if not set) |
+
+*Required if not using a custom endpoint
+
+### Verify Installation
+
+```bash
+# Test VLM connection
+rpa-agent test-vlm
+
+# Take a screenshot
+rpa-agent screenshot
+
+# Run a simple task
+rpa-agent run "Click the Windows Start button"
+```
+
 ## Architecture
 
 ```
@@ -174,13 +277,23 @@ rpa-agent test-vlm
 ### Python API
 
 ```python
-from rpa_agent import GUIAgent, AgentConfig, VLMConfig
+from rpa_agent import GUIAgent, AgentConfig
+from rpa_agent.vlm import VLMConfig
 
-# Configure VLM endpoint
-vlm_config = VLMConfig(
+# Option 1: Auto-configure from environment variables
+agent = GUIAgent()
+
+# Option 2: Official Anthropic API
+vlm_config = VLMConfig.for_anthropic(
+    api_key="sk-ant-your-api-key",
+    model="claude-opus-4-20250514"  # recommended
+)
+
+# Option 3: Custom endpoint
+vlm_config = VLMConfig.for_custom_endpoint(
     base_url="http://localhost:23333/api/anthropic",
-    api_key="Powered by Agent Maestro",
-    model="claude-opus-4.6-1m"
+    api_key="your-api-key",
+    model="claude-opus-4.6-fast"  # recommended for custom endpoints
 )
 
 config = AgentConfig(
@@ -189,7 +302,7 @@ config = AgentConfig(
     save_screenshots=True
 )
 
-# Create agent
+# Create agent with custom config
 agent = GUIAgent(config=config)
 
 # Run task
@@ -227,13 +340,21 @@ agent.run("Complete the form", on_action=on_action, on_step=on_step)
 
 ### VLM Configuration
 
+The VLM client automatically configures itself from environment variables. You can also configure it programmatically:
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `base_url` | `http://localhost:23333/api/anthropic` | API endpoint |
-| `api_key` | `Powered by Agent Maestro` | API key |
-| `model` | `claude-opus-4.6-1m` | Model name |
+| `base_url` | `None` (uses Anthropic default) | Custom API endpoint |
+| `api_key` | From `ANTHROPIC_API_KEY` | API key |
+| `model` | `claude-opus-4-20250514` | Model name |
 | `max_tokens` | `4096` | Max response tokens |
 | `temperature` | `0.1` | Sampling temperature |
+| `use_official_api` | Auto-detected | Use official Anthropic API |
+
+**Configuration Priority:**
+1. Custom endpoint (`RPA_VLM_BASE_URL`) if set
+2. Official Anthropic API (`ANTHROPIC_API_KEY`) if set
+3. Default development endpoint (localhost)
 
 ### Agent Configuration
 

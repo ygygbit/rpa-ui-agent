@@ -1,13 +1,22 @@
 """
 Vision-Language Model client for GUI understanding.
 
-Interfaces with the local Anthropic-compatible API endpoint
-for screenshot analysis and action generation.
+Supports two configuration modes:
+1. Custom endpoint (e.g., local server, proxy): Set RPA_VLM_BASE_URL
+2. Official Anthropic API: Set ANTHROPIC_API_KEY
+
+Environment Variables:
+- RPA_VLM_BASE_URL: Custom API endpoint URL (optional)
+- RPA_VLM_API_KEY: API key for custom endpoint (optional)
+- RPA_VLM_MODEL: Model name to use (optional)
+- ANTHROPIC_API_KEY: Official Anthropic API key (used if no custom endpoint)
+
+Recommended models: claude-opus-4-20250514, claude-sonnet-4-20250514
 """
 
 import base64
-import json
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -17,24 +26,131 @@ from PIL import Image
 from .prompts import SystemPrompts
 
 
-# Available models
-AVAILABLE_MODELS = [
-    "claude-opus-4.6-fast",
-    "claude-opus-4.6",
-    "claude-opus-4.6-1m",
+# Available models for different providers
+ANTHROPIC_MODELS = [
+    "claude-opus-4-20250514",      # Best for visual tasks (recommended)
+    "claude-sonnet-4-20250514",    # Fast and capable
+    "claude-3-5-sonnet-20241022",  # Previous generation
 ]
 
-DEFAULT_MODEL = "claude-opus-4.6-fast"
+CUSTOM_ENDPOINT_MODELS = [
+    "claude-opus-4.6-fast",  # Fast model for custom endpoints (recommended)
+    "claude-opus-4.6",       # Standard model
+    "claude-opus-4.6-1m",    # Extended context
+]
+
+# Default model based on configuration
+DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-20250514"
+DEFAULT_CUSTOM_MODEL = "claude-opus-4.6-fast"
+
+
+def get_config_from_env() -> dict:
+    """
+    Load VLM configuration from environment variables.
+
+    Priority:
+    1. Custom endpoint (RPA_VLM_BASE_URL) if set
+    2. Official Anthropic API (ANTHROPIC_API_KEY) if set
+    3. Default local endpoint for development
+    """
+    config = {}
+
+    # Check for custom endpoint first
+    custom_url = os.environ.get("RPA_VLM_BASE_URL")
+    custom_key = os.environ.get("RPA_VLM_API_KEY")
+    custom_model = os.environ.get("RPA_VLM_MODEL")
+
+    # Check for official Anthropic API
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+
+    if custom_url:
+        # Custom endpoint mode
+        config["base_url"] = custom_url
+        config["api_key"] = custom_key or "custom-endpoint"
+        config["model"] = custom_model or DEFAULT_CUSTOM_MODEL
+        config["use_official_api"] = False
+    elif anthropic_key:
+        # Official Anthropic API mode
+        config["base_url"] = None  # Use default Anthropic URL
+        config["api_key"] = anthropic_key
+        config["model"] = custom_model or DEFAULT_ANTHROPIC_MODEL
+        config["use_official_api"] = True
+    else:
+        # Default: local development endpoint
+        config["base_url"] = "http://localhost:23333/api/anthropic"
+        config["api_key"] = "development"
+        config["model"] = custom_model or DEFAULT_CUSTOM_MODEL
+        config["use_official_api"] = False
+
+    return config
 
 
 @dataclass
 class VLMConfig:
-    """Configuration for VLM client."""
-    base_url: str = "http://localhost:23333/api/anthropic"
-    api_key: str = "Powered by Agent Maestro"
-    model: str = DEFAULT_MODEL
+    """
+    Configuration for VLM client.
+
+    Can be initialized directly or loaded from environment variables.
+
+    Examples:
+        # Use environment variables
+        config = VLMConfig.from_env()
+
+        # Custom endpoint
+        config = VLMConfig(
+            base_url="http://my-server:8080/api",
+            api_key="my-key",
+            model="claude-opus-4.6-fast"
+        )
+
+        # Official Anthropic API
+        config = VLMConfig(
+            api_key="sk-ant-...",
+            model="claude-opus-4-20250514",
+            use_official_api=True
+        )
+    """
+    base_url: Optional[str] = None
+    api_key: str = ""
+    model: str = DEFAULT_CUSTOM_MODEL
     max_tokens: int = 4096
     temperature: float = 0.1
+    use_official_api: bool = False
+
+    @classmethod
+    def from_env(cls) -> "VLMConfig":
+        """Create config from environment variables."""
+        env_config = get_config_from_env()
+        return cls(
+            base_url=env_config.get("base_url"),
+            api_key=env_config.get("api_key", ""),
+            model=env_config.get("model", DEFAULT_CUSTOM_MODEL),
+            use_official_api=env_config.get("use_official_api", False),
+        )
+
+    @classmethod
+    def for_anthropic(cls, api_key: str, model: Optional[str] = None) -> "VLMConfig":
+        """Create config for official Anthropic API."""
+        return cls(
+            api_key=api_key,
+            model=model or DEFAULT_ANTHROPIC_MODEL,
+            use_official_api=True,
+        )
+
+    @classmethod
+    def for_custom_endpoint(
+        cls,
+        base_url: str,
+        api_key: str = "custom",
+        model: Optional[str] = None
+    ) -> "VLMConfig":
+        """Create config for custom endpoint."""
+        return cls(
+            base_url=base_url,
+            api_key=api_key,
+            model=model or DEFAULT_CUSTOM_MODEL,
+            use_official_api=False,
+        )
 
 
 @dataclass
@@ -49,8 +165,18 @@ class VLMClient:
     """
     Vision-Language Model client for GUI analysis.
 
-    Uses the Anthropic Python SDK with a custom base URL
-    to connect to the local LLM endpoint.
+    Supports both custom endpoints and official Anthropic API.
+    Configuration is loaded from environment variables by default.
+
+    Usage:
+        # Auto-configure from environment
+        client = VLMClient()
+
+        # Custom endpoint
+        client = VLMClient(VLMConfig.for_custom_endpoint("http://localhost:8080/api"))
+
+        # Official Anthropic API
+        client = VLMClient(VLMConfig.for_anthropic("sk-ant-..."))
     """
 
     def __init__(self, config: Optional[VLMConfig] = None):
@@ -58,15 +184,20 @@ class VLMClient:
         Initialize VLM client.
 
         Args:
-            config: VLM configuration (uses defaults if None)
+            config: VLM configuration. If None, loads from environment variables.
         """
-        self.config = config or VLMConfig()
+        self.config = config or VLMConfig.from_env()
 
-        # Initialize Anthropic client with custom base URL
-        self.client = anthropic.Anthropic(
-            api_key=self.config.api_key,
-            base_url=self.config.base_url
-        )
+        # Initialize Anthropic client
+        if self.config.use_official_api or self.config.base_url is None:
+            # Official Anthropic API
+            self.client = anthropic.Anthropic(api_key=self.config.api_key)
+        else:
+            # Custom endpoint
+            self.client = anthropic.Anthropic(
+                api_key=self.config.api_key,
+                base_url=self.config.base_url
+            )
 
     def _encode_image(self, image: Union[str, Path, Image.Image, bytes, Tuple[str, str]]) -> Tuple[str, str]:
         """
