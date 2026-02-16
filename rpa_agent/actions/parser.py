@@ -64,15 +64,60 @@ class ActionParser:
 
         return None, f"Could not parse action from: {text[:200]}"
 
+    def _find_json_object(self, text: str) -> Optional[str]:
+        """Find a complete JSON object in text, handling nested braces."""
+        # Try to find JSON between ```json ... ``` markers first
+        code_block = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+        if code_block:
+            try:
+                json.loads(code_block.group(1))
+                return code_block.group(1)
+            except json.JSONDecodeError:
+                pass
+
+        # Find all '{' positions and try parsing from each one
+        for i, ch in enumerate(text):
+            if ch == '{':
+                # Try to find matching closing brace by counting depth
+                depth = 0
+                in_string = False
+                escape = False
+                for j in range(i, len(text)):
+                    c = text[j]
+                    if escape:
+                        escape = False
+                        continue
+                    if c == '\\' and in_string:
+                        escape = True
+                        continue
+                    if c == '"' and not escape:
+                        in_string = not in_string
+                        continue
+                    if in_string:
+                        continue
+                    if c == '{':
+                        depth += 1
+                    elif c == '}':
+                        depth -= 1
+                        if depth == 0:
+                            candidate = text[i:j+1]
+                            try:
+                                json.loads(candidate)
+                                return candidate
+                            except json.JSONDecodeError:
+                                break  # This opening brace didn't lead to valid JSON
+                # If we didn't find a match for this '{', continue to next one
+        return None
+
     def _try_json_parse(self, text: str) -> Tuple[Optional[AnyAction], str]:
         """Try to parse JSON-formatted action."""
-        # Find JSON object in text
-        json_match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
-        if not json_match:
+        # Find JSON object in text (supports nested braces)
+        json_str = self._find_json_object(text)
+        if not json_str:
             return None, "No JSON found"
 
         try:
-            data = json.loads(json_match.group())
+            data = json.loads(json_str)
         except json.JSONDecodeError:
             return None, "Invalid JSON"
 

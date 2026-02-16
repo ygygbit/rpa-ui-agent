@@ -560,6 +560,19 @@ def sandbox_run(
         console.print("[dim]Start with: rpa-agent sandbox up[/]")
         return
 
+    # Ensure Chrome is running in the sandbox
+    if not status.get("chrome_running"):
+        try:
+            chrome_resp = httpx.post(f"{sandbox_url}/chrome/start?url=about:blank", timeout=10)
+            if chrome_resp.status_code == 200:
+                import time
+                time.sleep(2)  # Wait for Chrome to fully initialize
+                console.print("[green]Chrome started in sandbox[/]")
+            else:
+                console.print("[yellow]Warning: Could not start Chrome[/]")
+        except Exception as e:
+            console.print(f"[yellow]Warning: Chrome start failed: {e}[/]")
+
     # Create configuration with sandbox mode
     vlm_config = VLMConfig(
         base_url=base_url,

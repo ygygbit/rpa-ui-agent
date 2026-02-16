@@ -198,15 +198,22 @@ async def start_chrome(url: str = "about:blank"):
     env = os.environ.copy()
     env['DISPLAY'] = ':99'
 
-    # Start Chrome with sandbox-safe flags
+    # Start Chrome with sandbox-safe flags and CDP enabled
     process = subprocess.Popen(
         [
             'google-chrome',
             '--no-sandbox',
             '--disable-gpu',
             '--disable-dev-shm-usage',
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-extensions',
             '--window-size=1920,1040',  # Leave room for taskbar
             '--window-position=0,0',
+            '--remote-debugging-port=9222',
+            '--remote-debugging-address=127.0.0.1',
+            '--remote-allow-origins=*',
+            '--user-data-dir=/tmp/chrome-profile',
             url
         ],
         env=env,
