@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  rpa-sandbox:
+    build:
+      context: ./sandbox
+      dockerfile: Dockerfile
+    container_name: rpa-sandbox
+    environment:
+      - DISPLAY=:99
+      - RESOLUTION=1920x1080x24
+    ports:
+      - "5900:5900"   # VNC
+      - "6080:6080"   # noVNC web interface
+      - "8000:8000"   # API server
+    volumes:
+      - ./rpa_agent:/app/rpa_agent:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    shm_size: 2gb
