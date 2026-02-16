@@ -70,6 +70,7 @@ RUN pip3 install --no-cache-dir \
     fastapi \
     uvicorn \
     websockets \
+    websocket-client \
     rich \
     typer \
     anthropic

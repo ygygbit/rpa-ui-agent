@@ -52,9 +52,94 @@ rpa_agent/
 
 ---
 
-## Current State (Session 3 - 2026-02-16)
+## Current State (Session 5 - 2026-02-16)
 
-### MiniWoB++ BENCHMARK: 91.7% ACHIEVED!
+### Phase: CDP Integration for Web Content Typing (格物致知)
+
+Following the 格物致知 approach: observed that `xdotool type` fails to produce visible text in Chrome's web page content (search bars, form fields), despite working fine for the address bar. Investigated deeply, found the root cause, and implemented a general fix using Chrome DevTools Protocol (CDP).
+
+**GitHub Repo**: `git@github.com:layoffhuman/rpa-ui-agent.git` (private)
+
+### Session 5 Findings: CDP-Based Typing Fix
+
+**Root Cause Discovery**: `xdotool type` sends X11 synthetic key events. Chrome's address bar is a native GTK widget that receives these events. However, Chrome's web page content (rendered by Blink) does NOT receive X11 key events — it uses its own input pipeline. This is why typing worked in the address bar but failed in search bars and form fields.
+
+**Secondary Discovery**: `xdotool click` sends X11 click events that Chrome renders visually (cursor moves), but the click does NOT propagate focus through Chrome's DOM. After an xdotool click on a search bar, `document.activeElement` becomes BODY instead of the clicked INPUT/TEXTAREA.
+
+**Solution**: Chrome DevTools Protocol (CDP) for all web page interactions:
+1. **CDP `Input.insertText`** for typing into focused page elements
+2. **CDP `Input.dispatchMouseEvent`** as a click fallback to properly set DOM focus
+3. **Focus detection guard** (`_page_has_focused_editable()`) to route between CDP and xdotool
+4. **Stale connection recovery** — reconnect when page target changes after navigation
+
+#### Files Changed
+- **`controller_linux.py`**: Major rewrite adding CDP connection management, focus detection, typing/key/hotkey via CDP with xdotool fallback
+- **`server.py`**: Added Chrome launch flags (`--no-first-run`, `--no-default-browser-check`, `--disable-extensions`, `--remote-debugging-port=9222`, `--remote-debugging-address=127.0.0.1`, `--remote-allow-origins=*`, `--user-data-dir=/tmp/chrome-profile`)
+- **`cli.py`**: Auto-start Chrome before agent loop in `sandbox run`
+- **`Dockerfile`**: Added `websocket-client` package
+
+#### Test Results (Google Search Task)
+| Run | Outcome | Notes |
+|-----|---------|-------|
+| Pre-CDP | FAIL (20/20 steps) | xdotool type produced no visible text |
+| CDP v1 (stale conn) | Partial (17/20) | CDP connected to old target after navigation |
+| CDP v2 (fixed) | SUCCESS (5/6 steps) | Typed in search bar, submitted, hit Google CAPTCHA |
+| DuckDuckGo test | FAIL (12/15) | VLM gave coordinates 17px above search box |
+
+#### Architecture: CDP + xdotool Routing
+```
+type_text(text) →
+  1. Try CDP: _type_via_cdp(text)
+     a. Check _page_has_focused_editable() via Runtime.evaluate
+     b. If no focus: dispatch CDP click at cursor position → re-check
+     c. If focused: Input.insertText → return True
+  2. Fallback: xdotool type (for address bar, native widgets)
+
+press_key(key) →
+  1. Try CDP: _press_key_via_cdp() [only if page editable focused]
+  2. Fallback: xdotool key
+
+hotkey(*keys) →
+  1. Try CDP: _hotkey_via_cdp() [only if page editable focused]
+  2. Fallback: xdotool key combo
+```
+
+#### Known Issues
+1. **Google CAPTCHA**: Google detects automated traffic from Docker container. Environmental issue, not a code bug.
+2. **VLM coordinate accuracy**: VLM sometimes gives coordinates that miss the target element (e.g., 17px off on DuckDuckGo). CDP click fallback only works if the cursor is actually over the element.
+3. **CDP only works for Chrome**: If testing non-Chrome apps, xdotool remains the only option.
+
+### Next Steps
+1. **Improve VLM coordinate accuracy** — the main remaining bottleneck for web interactions
+2. **Test with more websites** to validate CDP typing works broadly
+3. **Continue 格物致知 iteration** — find next failure, investigate, fix generally
+4. **Consider CDP-based click** as primary click method for web content (replacing xdotool click)
+
+**Task**: "Navigate to google.com, search for 'best practices for GUI automation', and click the first search result"
+- **Result**: FAILED at 15/15 steps (hit max steps)
+- **Steps 1-5**: Successfully navigated to google.com using hotkey (Ctrl+L) and typing URL
+- **Steps 6-15**: Agent got STUCK IN A LOOP trying to type the search query
+- **Root Cause**: The agent used Ctrl+A to select text in the address bar, then tried to type the search query but the old text wasn't reliably replaced. It kept seeing "google.com" and repeatedly attempted the same approach without trying alternatives.
+
+**Error Categories Identified**:
+1. **Stuck loop**: Agent repeated the same failing type action 10+ times
+2. **No recovery strategy**: Agent didn't try alternative approaches (e.g., clicking the search box directly instead of address bar)
+3. **No state change detection**: Agent didn't recognize that its action had no effect
+
+### Key Root Causes to Fix (General, Not App-Specific)
+
+1. **Missing stuck-loop detection in main agent**: The MiniWoB++ benchmark has stuck detection, but the main `agent.py` does NOT. Need to add general stuck-loop detection that:
+   - Detects when 2-3 consecutive actions are identical or very similar
+   - Injects a warning into the VLM context telling it to try a different approach
+   - Eventually forces an alternative strategy
+
+2. **Prompt doesn't support direct click+type workflow**: The current GUI_AGENT prompt only supports `move_relative` → `click_now` workflow (2 steps to interact with any element). This is inefficient. Should also support direct `click(x, y)` for one-shot interaction when the element is clearly identified.
+
+3. **No action verification**: Agent doesn't verify whether its action had the intended effect. Should compare before/after screenshots to detect "no visible change" and flag it.
+
+---
+
+### Previous Milestone: MiniWoB++ BENCHMARK 91.7% ACHIEVED!
 
 **Best Result: Run #13 - 91.7% (110/120 episodes)**
 
@@ -312,24 +397,22 @@ uv add miniwob
 
 ## Next Steps for Next Session
 
-1. **MiniWoB++ is SOLVED** - 91.7% achieved!
-   - Verify with: run full benchmark again
-   - Target was 90%+, exceeded with 91.7%
+### Immediate (General Agent Improvements)
+1. **Add stuck-loop detection to agent.py**: Track last N actions, detect repetition, inject warning
+2. **Improve GUI_AGENT prompt**: Support direct `click(x, y)` actions alongside `move_relative`/`click_now` workflow
+3. **Add action-effect verification**: Compare screenshots before/after actions to detect "no change"
+4. **Re-test Google search task** with improvements
 
-2. **Improve click-collapsible** (currently 78%):
-   - Main failure: VLM clicks content area instead of Submit
-   - Add more specific Submit button coordinates
-   - Consider two-phase approach: expand, then wait for visual confirmation
+### Real-World Task Testing (see ITERATION_PLAN.md for full list)
+5. **File management tasks**: create folder, rename, move, delete, search
+6. **Text editing tasks**: open file, edit, find/replace, save as
+7. **Multi-app workflows**: copy from browser to editor, download + move, etc.
+8. **Office tasks**: create document, format text, create table
 
-3. **WebArena/OSWorld integration**:
-   - More complex web tasks
-   - Multi-page navigation
-   - Form filling with validation
-
-4. **Real-world testing**:
-   - Chrome automation tasks
-   - Office applications
-   - File management
+### Long-Term
+9. **OSWorld/WebArena benchmark integration**
+10. **Speed optimization**: reduce steps needed per task
+11. **Continuous iteration following 格物致知 principles**
 
 ---
 
@@ -361,3 +444,24 @@ uv add miniwob
 - Iterative improvement over 13 runs
 - **Final result: 91.7% (110/120) - TARGET ACHIEVED!**
 - Key improvements: 4x scaling, Y-clamping, stuck detection, task hints
+
+### Session 4 (2026-02-16) - Real-World Iteration
+- Pushed code to GitHub (`layoffhuman/rpa-ui-agent`, private)
+- Created ITERATION_PLAN.md with 40+ real-world tasks and 格物致知 methodology
+- Installed additional apps in sandbox: gedit, mousepad, gnome-calculator, libreoffice-writer, libreoffice-calc
+- **First real-world test: Google search FAILED** - agent stuck in typing loop
+- Root cause analysis: no stuck-loop detection in main agent, prompt too rigid
+- Sandbox apps installed: `apt-get install -y gedit mousepad gnome-calculator libreoffice-writer libreoffice-calc`
+- **Next**: implement 3 general improvements (stuck detection, prompt upgrade, action verification)
+
+### Session 5 (2026-02-16) - CDP Integration
+- Discovered xdotool type fails for Chrome web page content (X11 vs Blink input pipeline)
+- Discovered xdotool click doesn't propagate DOM focus in Chrome
+- Implemented CDP-based typing with `Input.insertText` and CDP click fallback
+- Added focus detection guard (`_page_has_focused_editable()`) for CDP vs xdotool routing
+- Fixed stale CDP WebSocket connections after page navigation
+- Added Chrome launch flags: `--no-first-run`, `--no-default-browser-check`, `--remote-debugging-port=9222`
+- Added auto-Chrome-start in CLI `sandbox run` command
+- **Google search test: SUCCESS** — typed in search bar via CDP, submitted, hit CAPTCHA (environmental)
+- **DuckDuckGo test: FAIL** — VLM coordinate accuracy issue (17px off target)
+- **Next**: improve VLM coordinate accuracy, test more websites, consider CDP-based clicks

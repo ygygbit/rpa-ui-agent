@@ -172,6 +172,7 @@ class GUIAgent:
         self.steps: List[AgentStep] = []
         self.current_task: Optional[str] = None
         self._conversation_history: List[Dict[str, Any]] = []
+        self._recent_actions: List[str] = []  # Track recent actions for stuck detection
 
         # Ensure screenshot directory exists
         self.config.screenshot_dir.mkdir(parents=True, exist_ok=True)
@@ -416,6 +417,218 @@ class GUIAgent:
         else:
             return f"Action {result.action.action_type.value} failed: {result.error}"
 
+    def _action_signature(self, action: AnyAction) -> str:
+        """Create a string signature of an action for comparison."""
+        parts = [action.action_type.value]
+        if hasattr(action, 'x') and hasattr(action, 'y'):
+            parts.append(f"({action.x},{action.y})")
+        if hasattr(action, 'dx') and hasattr(action, 'dy'):
+            parts.append(f"(dx={action.dx},dy={action.dy})")
+        if hasattr(action, 'text'):
+            parts.append(f"text={action.text[:30]}")
+        if hasattr(action, 'key') and hasattr(action, 'key'):
+            parts.append(f"key={action.key}")
+        if hasattr(action, 'keys') and isinstance(action.keys, list):
+            parts.append(f"keys={'+'.join(action.keys)}")
+        return "|".join(parts)
+
+    def _check_stuck_loop(self, action: AnyAction) -> Tuple[Optional[str], str]:
+        """
+        Check if agent is stuck in a loop of repeating identical or similar actions.
+
+        Returns:
+            Tuple of (warning_message, severity) where severity is one of:
+            - "none": no issue detected
+            - "warn": soft warning (2 identical actions)
+            - "block": block execution and force re-query (3-4 identical actions)
+            - "override": auto-execute keyboard fallback (5+ identical actions)
+        """
+        sig = self._action_signature(action)
+        self._recent_actions.append(sig)
+
+        # Keep only last 10 actions for better pattern detection
+        if len(self._recent_actions) > 10:
+            self._recent_actions = self._recent_actions[-10:]
+
+        # Count consecutive identical actions from the end
+        consecutive_count = 1
+        for i in range(len(self._recent_actions) - 2, -1, -1):
+            if self._recent_actions[i] == sig:
+                consecutive_count += 1
+            else:
+                break
+
+        # Smart override: if agent typed text recently and is now stuck clicking,
+        # override earlier (at 3 repeats instead of 5) with Enter key
+        if consecutive_count >= 3 and self._should_submit_after_type(action):
+            return (
+                "OVERRIDE: You typed text into a field and then kept clicking instead of submitting. "
+                "The system is pressing Enter to submit. "
+                "After this, observe the screen and proceed with the next step of the task.",
+                "override"
+            )
+
+        # 5+ identical: force override with keyboard fallback
+        if consecutive_count >= 5:
+            return (
+                "CRITICAL: You have repeated the EXACT SAME action 5+ times. "
+                "The system is now OVERRIDING your action with a keyboard shortcut. "
+                "After this override, you MUST analyze the screen fresh and try something completely new.",
+                "override"
+            )
+
+        # 3-4 identical: block and force re-query
+        if consecutive_count >= 3:
+            return (
+                "BLOCKED: You have repeated the EXACT SAME action 3+ times in a row. "
+                "Your action was NOT executed. The screen has NOT changed. "
+                "You MUST choose a COMPLETELY DIFFERENT action type. "
+                "FORBIDDEN: Do NOT use the same action type with the same target. "
+                "REQUIRED alternatives: "
+                "(1) Use press_key with 'enter' to confirm what's on screen, "
+                "(2) Use hotkey like ['ctrl','l'] to reset focus, "
+                "(3) Click on a DIFFERENT element at DIFFERENT coordinates (at least 100px away), "
+                "(4) Use 'type' to enter text directly if you were trying to navigate. "
+                "Pick ONE of these alternatives NOW.",
+                "block"
+            )
+
+        # 2 identical: soft warning
+        if consecutive_count >= 2:
+            return (
+                "NOTE: You performed the same action twice. If it didn't produce the expected result, "
+                "try a different approach on your next action.",
+                "warn"
+            )
+
+        # Check for oscillation (alternating between 2 actions) - strict ABAB
+        if len(self._recent_actions) >= 4:
+            last_4 = self._recent_actions[-4:]
+            if last_4[0] == last_4[2] and last_4[1] == last_4[3] and last_4[0] != last_4[1]:
+                return (
+                    "WARNING: You are oscillating between two actions without making progress. "
+                    "STOP and try a completely different strategy to accomplish this task.",
+                    "block"
+                )
+
+        # Early detection: 3+ clicks on similar area without any type action
+        # This catches the "keep clicking search bar instead of typing" pattern
+        if len(self._recent_actions) >= 3 and isinstance(action, (ClickAction, DoubleClickAction)):
+            coords = self._extract_recent_coords(3)
+            if coords and len(coords) >= 3:
+                xs = [c[0] for c in coords]
+                ys = [c[1] for c in coords]
+                x_spread = max(xs) - min(xs)
+                y_spread = max(ys) - min(ys)
+                if x_spread <= 80 and y_spread <= 40:
+                    # 3+ clicks in the same area — check if any were type actions
+                    recent_sigs = self._recent_actions[-3:]
+                    has_type = any(s.startswith("type|") for s in recent_sigs)
+                    if not has_type:
+                        return (
+                            "BLOCKED: You have clicked the SAME area 3 times without typing. "
+                            "The text field IS focused after the first click — repeated clicks are unnecessary. "
+                            "You MUST now use 'type' to enter text. "
+                            "Your next action MUST be: "
+                            '{{"action": "type", "text": "<your text here>", "press_enter": false}}',
+                            "block"
+                        )
+
+        # Check for coordinate-based stuck loop: agent interacting with the same
+        # area (within 30px) across the last 6+ actions regardless of action type
+        if len(self._recent_actions) >= 6:
+            coords = self._extract_recent_coords(6)
+            if coords and len(coords) >= 5:
+                # Check if all coordinates cluster within a 60px box
+                xs = [c[0] for c in coords]
+                ys = [c[1] for c in coords]
+                x_spread = max(xs) - min(xs)
+                y_spread = max(ys) - min(ys)
+                if x_spread <= 60 and y_spread <= 60:
+                    # Check if any recent action was a 'type' action
+                    recent_sigs = self._recent_actions[-6:]
+                    has_type = any(s.startswith("type|") for s in recent_sigs)
+                    if not has_type:
+                        # All clicks, no typing — the agent needs to TYPE, not press Enter
+                        return (
+                            "BLOCKED: You have been CLICKING the SAME area "
+                            f"(within ~{max(x_spread, y_spread)}px) for the last {len(coords)} actions "
+                            "but you have NEVER TYPED any text. "
+                            "Clicking a text field FOCUSES it — it does NOT require repeated clicks. "
+                            "The field IS already focused from your first click. "
+                            "You MUST now use the 'type' action to enter text into this field. "
+                            "Do NOT click again. Your next action MUST be: "
+                            '{{"action": "type", "text": "<your text here>", "press_enter": false}}',
+                            "block"
+                        )
+                    else:
+                        return (
+                            "BLOCKED: You have been interacting with the SAME screen area "
+                            f"(within ~{max(x_spread, y_spread)}px) for the last {len(coords)} actions "
+                            "using different action types, but nothing is changing. "
+                            "This area is NOT responding to your actions. "
+                            "You MUST try a completely different approach: "
+                            "(1) Press Enter to submit/confirm, "
+                            "(2) Use Ctrl+L to reset browser focus, "
+                            "(3) Press Escape to dismiss any popups, "
+                            "(4) Click somewhere COMPLETELY DIFFERENT (at least 200px away). "
+                            "Do NOT interact with this area again.",
+                            "override"
+                        )
+
+        return (None, "none")
+
+    def _should_submit_after_type(self, current_action: AnyAction) -> bool:
+        """
+        Check if the agent recently typed text and is now stuck clicking/interacting
+        with the same area, suggesting it should press Enter to submit instead.
+
+        Returns True if:
+        - Current action is a click-type action (click, click_now, etc.)
+        - A recent prior action was a 'type' action (within the last 5 actions)
+        """
+        # Only trigger for click-type actions
+        if not isinstance(current_action, (ClickAction, ClickNowAction, DoubleClickAction)):
+            return False
+
+        # Look backwards through recent actions for a 'type' action
+        for sig in reversed(self._recent_actions[:-1]):  # Exclude current
+            if sig.startswith("type|"):
+                return True
+            # Stop looking once we've checked back far enough
+            if sig.startswith("click|") or sig.startswith("click_now|"):
+                continue  # Skip past clicks to find the type
+            # If we hit a non-click, non-type action, stop searching
+            break
+
+        return False
+
+    def _extract_recent_coords(self, n: int) -> List[Tuple[int, int]]:
+        """
+        Extract (x, y) coordinates from the last n action signatures.
+
+        Parses coordinates from signatures like 'click|(180,75)' or
+        actions with explicit x,y. Skips actions without coordinates
+        (like press_key, type, hotkey).
+
+        Returns list of (x, y) tuples found.
+        """
+        coords = []
+        for sig in self._recent_actions[-n:]:
+            # Parse coordinate from action signature format: "action|(x,y)"
+            if "|(" in sig:
+                try:
+                    coord_part = sig.split("|(")[1].rstrip(")")
+                    # Could be like "180,75)" or "180,75)|..."
+                    coord_part = coord_part.split(")")[0]
+                    parts = coord_part.split(",")
+                    if len(parts) >= 2:
+                        x, y = int(parts[0]), int(parts[1])
+                        coords.append((x, y))
+                except (ValueError, IndexError):
+                    pass
+        return coords
+
     def _display_step(self, step: AgentStep) -> None:
         """Display step information in console."""
         # Create step panel
@@ -472,6 +685,7 @@ class GUIAgent:
         self.current_task = task
         self.steps = []
         self._conversation_history = []
+        self._recent_actions = []
 
         # Start hotkey monitor for stopping agent (Ctrl+Alt)
         from .core.hotkey import HotkeyMonitor
@@ -542,7 +756,7 @@ class GUIAgent:
                         self.state = AgentState.FAILED
                         step.action_result = ActionResult(
                             success=False,
-                            action=FailAction(error="Max retries exceeded"),
+                            action=FailAction(action_type=ActionType.FAIL, error="Max retries exceeded"),
                             error="Max retries exceeded"
                         )
                     self.steps.append(step)
@@ -550,6 +764,67 @@ class GUIAgent:
 
                 # Reset retry count on successful parse
                 retry_count = 0
+
+                # 3.5. Check for stuck loop
+                stuck_warning, stuck_severity = self._check_stuck_loop(action)
+
+                if stuck_severity == "override":
+                    # 5+ identical actions: force a keyboard fallback
+                    self.console.print(f"[red bold]OVERRIDE: Forcing keyboard fallback (Enter key) after 5+ identical actions[/]")
+                    override_action = KeyAction(action_type=ActionType.PRESS_KEY, key="enter")
+                    result = self._execute_action(override_action)
+                    step.action = override_action
+                    step.action_result = result
+                    step.reasoning = "SYSTEM OVERRIDE: Forced Enter key after 5+ repeated identical actions"
+                    # Inject override notice into conversation
+                    self._conversation_history.append({
+                        "role": "assistant",
+                        "content": vlm_response.text
+                    })
+                    self._conversation_history.append({
+                        "role": "user",
+                        "content": stuck_warning
+                    })
+                    # Reset stuck counter so VLM gets a fresh chance after override
+                    self._recent_actions.clear()
+                    self._display_step(step)
+                    self.steps.append(step)
+                    if on_step:
+                        on_step(step)
+                    time.sleep(self.config.step_delay)
+                    continue
+
+                if stuck_severity == "block":
+                    # 3-4 identical actions: block execution, don't execute the action
+                    self.console.print(f"[red]BLOCKED: Action not executed (3+ identical repeats). Forcing re-analysis.[/]")
+                    step.action_result = ActionResult(
+                        success=False,
+                        action=action,
+                        error="BLOCKED: Identical action repeated 3+ times"
+                    )
+                    step.reasoning = "SYSTEM BLOCKED: Action not executed due to stuck loop"
+                    # Add VLM response and block message to history
+                    self._conversation_history.append({
+                        "role": "assistant",
+                        "content": vlm_response.text
+                    })
+                    self._conversation_history.append({
+                        "role": "user",
+                        "content": stuck_warning
+                    })
+                    self._display_step(step)
+                    self.steps.append(step)
+                    if on_step:
+                        on_step(step)
+                    time.sleep(self.config.step_delay)
+                    continue
+
+                if stuck_severity == "warn" and stuck_warning:
+                    self.console.print(f"[yellow]{stuck_warning[:80]}...[/]")
+                    self._conversation_history.append({
+                        "role": "user",
+                        "content": stuck_warning
+                    })
 
                 # 4. Confirm action if needed
                 if on_action and not on_action(action):
