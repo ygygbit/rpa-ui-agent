@@ -96,6 +96,12 @@ class KeyRequest(BaseModel):
     keys: list[str]
 
 
+class ScrollRequest(BaseModel):
+    amount: int
+    x: Optional[int] = None
+    y: Optional[int] = None
+
+
 # ==================== Screenshot Endpoints ====================
 
 @app.get("/screenshot")
@@ -299,6 +305,26 @@ async def keyboard_hotkey(request: KeyRequest):
 
     state.controller.hotkey(*request.keys)
     return {"status": "pressed", "keys": request.keys}
+
+
+@app.post("/keyboard/press")
+async def keyboard_press(key: str):
+    """Press and release a single key."""
+    if state.controller is None:
+        raise HTTPException(status_code=500, detail="Controller not initialized")
+
+    state.controller.press_key(key)
+    return {"status": "pressed", "key": key}
+
+
+@app.post("/mouse/scroll")
+async def mouse_scroll(request: ScrollRequest):
+    """Scroll at position."""
+    if state.controller is None:
+        raise HTTPException(status_code=500, detail="Controller not initialized")
+
+    state.controller.scroll(request.amount, request.x, request.y)
+    return {"status": "scrolled", "amount": request.amount}
 
 
 # ==================== Task Execution ====================
