@@ -772,7 +772,10 @@ class GUIAgent:
         if y < 140 and element_name:
             is_webpage_element = any(kw in element_name for kw in webpage_keywords)
             # Exclude browser-specific elements that ARE in the chrome area
-            browser_keywords = ["address", "url", "tab", "bookmark", "omnibox", "address bar", "url bar"]
+            browser_keywords = [
+                "address", "url", "tab", "bookmark", "omnibox",
+                "address bar", "url bar", "navigation", "chrome",
+            ]
             is_browser_element = any(kw in element_name for kw in browser_keywords)
 
             if is_webpage_element and not is_browser_element:
@@ -780,9 +783,21 @@ class GUIAgent:
                     f"COORDINATE WARNING: You are trying to click '{element_name}' at y={y}, "
                     f"but y < 140 is the browser toolbar area (tabs, address bar). "
                     f"Web page elements like search boxes, buttons, and forms are ALWAYS below y=140. "
-                    f"Please look at the grid overlay in the screenshot and use the labeled grid lines to determine "
-                    f"the correct coordinates. A search box in the center of a web page is typically around y=400-550."
+                    f"Look at the grid overlay — the browser address bar is near y=50-75. "
+                    f"A 'search bar' at y < 140 is the browser's ADDRESS BAR, NOT the web page search box. "
+                    f"The web page search box is typically around y=400-550. "
+                    f"Please use the grid lines to find the ACTUAL web page search input."
                 )
+
+        # Extra guard: ANY click at y < 100 on an element with "search" in the name
+        # is almost certainly a misidentification of the browser address bar
+        if y < 100 and element_name and "search" in element_name:
+            return (
+                f"COORDINATE WARNING: You clicked '{element_name}' at y={y}, which is in the "
+                f"browser chrome area. At y < 100, the only clickable elements are browser tabs "
+                f"and the address bar. If you want to search, look for the web page's search "
+                f"input field which is always below y=140. Use the grid overlay to find it."
+            )
 
         return None
 

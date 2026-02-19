@@ -267,8 +267,11 @@ class XTestInput:
         if keycode is not None:
             self.press_key(keycode, shift=needs_shift)
 
-    def type_string(self, text: str, interval: float = 0.02):
-        """Type a full string character by character."""
+    def type_string(self, text: str, interval: float = 0.03):
+        """Type a full string character by character.
+
+        Uses 30ms default interval to avoid Chrome autocomplete race conditions.
+        """
         for char in text:
             self.type_char(char)
             if interval > 0:

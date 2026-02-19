@@ -37,10 +37,11 @@ The screenshot has a **coordinate grid overlay** with labeled lines every 100 pi
 - **Page center horizontally**: x ≈ 960 (between x=900 and x=1000 grid lines)
 
 ### Coordinate Rules
-1. A web page search box (like DuckDuckGo's) is ALWAYS between y=300 and y=600. It is NEVER at y < 100.
-2. The browser ADDRESS BAR is at y ≈ 50-75 — do NOT confuse it with web page elements.
-3. Always use the grid lines to verify your coordinate estimate before responding.
-4. If unsure, find the two nearest grid lines and interpolate — this is more accurate than guessing.
+1. A web page search box (like DuckDuckGo's) is ALWAYS between y=300 and y=600. It is NEVER at y < 140.
+2. The browser ADDRESS BAR is at y ≈ 50-75 — do NOT confuse it with web page elements. A "search bar" at y < 100 is the address bar, NOT a web page search box.
+3. **CRITICAL: The DuckDuckGo search box and the Chrome address bar look similar** — both are text fields. Look at the Y coordinate! If y < 140, it's the address bar. The DDG search box is on the web page below the browser chrome.
+4. Always use the grid lines to verify your coordinate estimate before responding.
+5. If unsure, find the two nearest grid lines and interpolate — this is more accurate than guessing.
 
 ## Action Format
 Respond with a single JSON object:
