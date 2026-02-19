@@ -19,6 +19,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from PIL import Image, ImageDraw, ImageFont
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -94,6 +95,7 @@ class AgentConfig:
     # Visual feedback
     show_cursor_overlay: bool = True  # Show visual cursor indicator on screen
     show_action_notifier: bool = True  # Show action notification UI
+    show_coordinate_grid: bool = True  # Draw coordinate grid overlay on screenshots for VLM
 
     # Retry settings
     max_retries: int = 3
@@ -207,19 +209,105 @@ class GUIAgent:
             "height": img.height
         }
 
-        # Save screenshot as PNG (compressed)
+        # Save screenshot as PNG (compressed) — without grid overlay
         screenshot_path = None
         if self.config.save_screenshots:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             screenshot_path = self.config.screenshot_dir / f"step_{step_number:03d}_{timestamp}.png"
             img.save(screenshot_path, format="PNG", optimize=True)
 
+        # Apply coordinate grid overlay for VLM (not saved to disk)
+        vlm_img = img
+        if self.config.show_coordinate_grid:
+            vlm_img = self._draw_coordinate_grid(img)
+
         # Encode to base64 PNG for VLM (more reliable than JPEG)
         buffer = io.BytesIO()
-        img.save(buffer, format="PNG", optimize=True)
+        vlm_img.save(buffer, format="PNG", optimize=True)
         base64_img = base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
 
         return base64_img, screenshot_path, screen_info
+
+    @staticmethod
+    def _draw_coordinate_grid(img: Image.Image, spacing: int = 100) -> Image.Image:
+        """
+        Draw a coordinate grid overlay on a screenshot for VLM coordinate reading.
+
+        Draws major grid lines every `spacing` pixels with coordinate labels at
+        every intersection and along edges. The dense labeling helps the VLM
+        read coordinates directly from nearby labels rather than estimating.
+
+        Args:
+            img: PIL Image to annotate (not modified in-place).
+            spacing: Pixel spacing between grid lines (default 100px).
+
+        Returns:
+            New PIL Image with grid overlay.
+        """
+        img = img.copy()
+        draw = ImageDraw.Draw(img, "RGBA")
+        w, h = img.size
+
+        # Use a small default font
+        try:
+            font = ImageFont.truetype("arial.ttf", 11)
+        except OSError:
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
+            except OSError:
+                font = ImageFont.load_default()
+
+        grid_color = (255, 0, 0, 50)       # Semi-transparent red lines
+        major_grid_color = (255, 0, 0, 90)  # Brighter red for 500px lines
+        label_bg = (0, 0, 0, 160)           # Dark background for readability
+        label_fg = (255, 255, 0)            # Yellow text
+        tick_color = (255, 255, 0, 120)     # Yellow tick marks
+
+        # Draw vertical lines with labels at top and bottom
+        for x in range(spacing, w, spacing):
+            is_major = (x % 500 == 0)
+            color = major_grid_color if is_major else grid_color
+            line_width = 2 if is_major else 1
+            draw.line([(x, 0), (x, h)], fill=color, width=line_width)
+
+            # Label at top edge
+            label = str(x)
+            bbox = font.getbbox(label)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            draw.rectangle([x - tw // 2 - 2, 0, x + tw // 2 + 2, th + 4], fill=label_bg)
+            draw.text((x - tw // 2, 1), label, fill=label_fg, font=font)
+
+            # Label at bottom edge
+            draw.rectangle([x - tw // 2 - 2, h - th - 5, x + tw // 2 + 2, h], fill=label_bg)
+            draw.text((x - tw // 2, h - th - 2), label, fill=label_fg, font=font)
+
+        # Draw horizontal lines with labels at left and right
+        for y in range(spacing, h, spacing):
+            is_major = (y % 500 == 0)
+            color = major_grid_color if is_major else grid_color
+            line_width = 2 if is_major else 1
+            draw.line([(0, y), (w, y)], fill=color, width=line_width)
+
+            # Label at left edge
+            label = str(y)
+            bbox = font.getbbox(label)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            draw.rectangle([0, y - th // 2 - 2, tw + 4, y + th // 2 + 2], fill=label_bg)
+            draw.text((2, y - th // 2), label, fill=label_fg, font=font)
+
+            # Label at right edge
+            draw.rectangle([w - tw - 5, y - th // 2 - 2, w, y + th // 2 + 2], fill=label_bg)
+            draw.text((w - tw - 3, y - th // 2), label, fill=label_fg, font=font)
+
+        # Draw small crosshair markers at grid intersections for precise reference
+        cross_size = 4
+        cross_color = (255, 255, 0, 80)
+        for x in range(spacing, w, spacing):
+            for y in range(spacing, h, spacing):
+                draw.line([(x - cross_size, y), (x + cross_size, y)], fill=cross_color, width=1)
+                draw.line([(x, y - cross_size), (x, y + cross_size)], fill=cross_color, width=1)
+
+        return img.convert("RGB")
 
     def _execute_action(self, action: AnyAction) -> ActionResult:
         """Execute a parsed action."""
@@ -629,6 +717,75 @@ class GUIAgent:
                     pass
         return coords
 
+    def _validate_coordinates(self, action: AnyAction, screen_info: Dict[str, int]) -> Optional[str]:
+        """
+        Validate that click/interact coordinates are plausible.
+
+        Catches common VLM mistakes:
+        - Coordinates outside screen bounds
+        - Clicking browser chrome (y < 100) when the element name suggests a web page element
+
+        Args:
+            action: The parsed action to validate.
+            screen_info: Screen dimensions dict with 'width' and 'height'.
+
+        Returns:
+            Warning message to inject into conversation if coordinates seem wrong,
+            or None if coordinates look fine.
+        """
+        if not hasattr(action, 'x') or not hasattr(action, 'y'):
+            return None
+
+        x, y = action.x, action.y
+
+        # Some actions (e.g. ScrollAction) may have x/y as None
+        if x is None or y is None:
+            return None
+
+        w, h = screen_info.get("width", 1920), screen_info.get("height", 1080)
+
+        # Out of bounds check
+        if x < 0 or x >= w or y < 0 or y >= h:
+            return (
+                f"WARNING: Your coordinates ({x}, {y}) are OUTSIDE the screen bounds "
+                f"({w}x{h}). Please re-examine the screenshot and provide valid coordinates."
+            )
+
+        # Check if element name suggests a web page element but coordinates are in browser chrome
+        element_name = ""
+        if hasattr(action, 'element') and action.element:
+            element_name = action.element.lower()
+        elif hasattr(action, 'element_description') and action.element_description:
+            element_name = action.element_description.lower()
+        elif hasattr(action, 'target_element') and action.target_element:
+            element_name = action.target_element.lower()
+
+        # Keywords that indicate a web page element (not browser chrome)
+        webpage_keywords = [
+            "search", "input", "text field", "text box", "form",
+            "button", "link", "menu", "dropdown", "submit",
+            "login", "password", "email", "username",
+            "search privately",  # DuckDuckGo specific
+        ]
+
+        # If element name matches web page keywords AND y < 140, it's likely wrong
+        if y < 140 and element_name:
+            is_webpage_element = any(kw in element_name for kw in webpage_keywords)
+            # Exclude browser-specific elements that ARE in the chrome area
+            browser_keywords = ["address", "url", "tab", "bookmark", "omnibox", "address bar", "url bar"]
+            is_browser_element = any(kw in element_name for kw in browser_keywords)
+
+            if is_webpage_element and not is_browser_element:
+                return (
+                    f"COORDINATE WARNING: You are trying to click '{element_name}' at y={y}, "
+                    f"but y < 140 is the browser toolbar area (tabs, address bar). "
+                    f"Web page elements like search boxes, buttons, and forms are ALWAYS below y=140. "
+                    f"Please look at the grid overlay in the screenshot and use the labeled grid lines to determine "
+                    f"the correct coordinates. A search box in the center of a web page is typically around y=400-550."
+                )
+
+        return None
+
     def _display_step(self, step: AgentStep) -> None:
         """Display step information in console."""
         # Create step panel
@@ -764,6 +921,32 @@ class GUIAgent:
 
                 # Reset retry count on successful parse
                 retry_count = 0
+
+                # 3.25. Validate coordinates before execution
+                coord_warning = self._validate_coordinates(action, screen_info)
+                if coord_warning:
+                    self.console.print(f"[yellow]{coord_warning[:100]}...[/]")
+                    # Don't execute — re-query VLM with the warning
+                    step.action_result = ActionResult(
+                        success=False,
+                        action=action,
+                        error="Coordinates rejected by validation"
+                    )
+                    step.reasoning = "SYSTEM: Coordinate validation failed — re-querying VLM"
+                    self._conversation_history.append({
+                        "role": "assistant",
+                        "content": vlm_response.text
+                    })
+                    self._conversation_history.append({
+                        "role": "user",
+                        "content": coord_warning
+                    })
+                    self._display_step(step)
+                    self.steps.append(step)
+                    if on_step:
+                        on_step(step)
+                    time.sleep(self.config.step_delay)
+                    continue
 
                 # 3.5. Check for stuck loop
                 stuck_warning, stuck_severity = self._check_stuck_loop(action)

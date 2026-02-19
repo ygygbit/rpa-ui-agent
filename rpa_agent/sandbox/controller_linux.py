@@ -158,12 +158,18 @@ class XTestInput:
         self._flush()
 
     def click(self, x: int, y: int, button: int = 1):
-        """Move to position and click."""
+        """Move to position and click.
+
+        Uses longer delays to ensure Chrome registers the click event,
+        especially for hyperlink navigation in web content.
+        """
         self.move_to(x, y)
-        time.sleep(0.03)
+        time.sleep(0.05)  # 50ms settle after move
         self.button_press(button)
-        time.sleep(0.02)
+        time.sleep(0.08)  # 80ms hold — Chrome needs ≥50ms to register link clicks
         self.button_release(button)
+        self._flush()
+        time.sleep(0.05)  # 50ms post-click settle
 
     def get_cursor_position(self) -> Tuple[int, int]:
         """Get current mouse cursor position."""
@@ -372,10 +378,12 @@ class LinuxController:
         if self._xtest:
             if x is not None and y is not None:
                 self._xtest.move_to(x, y)
-                time.sleep(0.03)
+                time.sleep(0.05)  # 50ms settle after move
             self._xtest.button_press(btn)
-            time.sleep(0.02)
+            time.sleep(0.08)  # 80ms hold — Chrome needs ≥50ms for link clicks
             self._xtest.button_release(btn)
+            self._xtest._flush()
+            time.sleep(0.05)  # 50ms post-click settle
         else:
             xdotool_btn = str(btn)
             if x is not None and y is not None:
@@ -388,14 +396,16 @@ class LinuxController:
         if self._xtest:
             if x is not None and y is not None:
                 self._xtest.move_to(x, y)
-                time.sleep(0.03)
+                time.sleep(0.05)
             self._xtest.button_press(1)
-            time.sleep(0.02)
+            time.sleep(0.08)
             self._xtest.button_release(1)
             time.sleep(0.05)
             self._xtest.button_press(1)
-            time.sleep(0.02)
+            time.sleep(0.08)
             self._xtest.button_release(1)
+            self._xtest._flush()
+            time.sleep(0.05)
         else:
             if x is not None and y is not None:
                 self._run_xdotool(['mousemove', str(x), str(y)])
