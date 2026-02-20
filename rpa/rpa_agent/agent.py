@@ -175,6 +175,7 @@ class GUIAgent:
         self.current_task: Optional[str] = None
         self._conversation_history: List[Dict[str, Any]] = []
         self._recent_actions: List[str] = []  # Track recent actions for stuck detection
+        self._vlm_scale_factor: float = 1.0  # Ratio of original/VLM image size
 
         # Ensure screenshot directory exists
         self.config.screenshot_dir.mkdir(parents=True, exist_ok=True)
@@ -216,10 +217,32 @@ class GUIAgent:
             screenshot_path = self.config.screenshot_dir / f"step_{step_number:03d}_{timestamp}.png"
             img.save(screenshot_path, format="PNG", optimize=True)
 
-        # Apply coordinate grid overlay for VLM (not saved to disk)
+        # Resize screenshot for VLM to avoid coordinate mismatch.
+        # VLM APIs (Anthropic) internally resize images with long edge > 1568px.
+        # If we send a 1920x1080 image with grid labels at pixel positions,
+        # the VLM sees a downscaled image where visual positions don't match
+        # the grid labels, causing systematic coordinate errors (~30% off).
+        # Fix: resize FIRST, then draw grid with labels showing ORIGINAL
+        # screen coordinates mapped to the resized pixel positions.
         vlm_img = img
+        original_w, original_h = img.size
+        max_edge = 1344  # Conservative limit below API's 1568px to ensure no further resizing
+        scale_factor = 1.0
+        if max(original_w, original_h) > max_edge:
+            scale_factor = max_edge / max(original_w, original_h)
+            new_w = round(original_w * scale_factor)
+            new_h = round(original_h * scale_factor)
+            vlm_img = img.resize((new_w, new_h), Image.LANCZOS)
+
+        # Store inverse scale so parsed VLM coordinates can be mapped back
+        self._vlm_scale_factor = 1.0 / scale_factor
+
+        # Apply coordinate grid overlay for VLM (not saved to disk)
         if self.config.show_coordinate_grid:
-            vlm_img = self._draw_coordinate_grid(img)
+            vlm_img = self._draw_coordinate_grid(
+                vlm_img,
+                original_size=(original_w, original_h),
+            )
 
         # Encode to base64 PNG for VLM (more reliable than JPEG)
         buffer = io.BytesIO()
@@ -228,18 +251,67 @@ class GUIAgent:
 
         return base64_img, screenshot_path, screen_info
 
+    def _rescale_action_coords(self, action: AnyAction) -> None:
+        """Scale VLM-reported coordinates from image space to screen space.
+
+        VLMs report coordinates in the pixel space of the image they receive.
+        When the screenshot was resized before sending to the VLM, we need to
+        scale those coordinates back to the original screen resolution.
+        Modifies the action in-place.
+        """
+        s = self._vlm_scale_factor
+        if s == 1.0:
+            return
+
+        # Absolute x, y (most actions)
+        if hasattr(action, 'x') and isinstance(getattr(action, 'x'), (int, float)):
+            if action.x is not None:
+                action.x = round(action.x * s)
+        if hasattr(action, 'y') and isinstance(getattr(action, 'y'), (int, float)):
+            if action.y is not None:
+                action.y = round(action.y * s)
+
+        # DragAction: start_x/y, end_x/y
+        if hasattr(action, 'start_x'):
+            action.start_x = round(action.start_x * s)
+        if hasattr(action, 'start_y'):
+            action.start_y = round(action.start_y * s)
+        if hasattr(action, 'end_x'):
+            action.end_x = round(action.end_x * s)
+        if hasattr(action, 'end_y'):
+            action.end_y = round(action.end_y * s)
+
+        # MoveRelativeAction: dx, dy offsets also need scaling
+        if hasattr(action, 'dx') and isinstance(getattr(action, 'dx'), (int, float)):
+            action.dx = round(action.dx * s)
+        if hasattr(action, 'dy') and isinstance(getattr(action, 'dy'), (int, float)):
+            action.dy = round(action.dy * s)
+
     @staticmethod
-    def _draw_coordinate_grid(img: Image.Image, spacing: int = 100) -> Image.Image:
+    def _draw_coordinate_grid(
+        img: Image.Image,
+        spacing: int = 100,
+        original_size: Optional[Tuple[int, int]] = None,
+    ) -> Image.Image:
         """
         Draw a coordinate grid overlay on a screenshot for VLM coordinate reading.
 
-        Draws major grid lines every `spacing` pixels with coordinate labels at
-        every intersection and along edges. The dense labeling helps the VLM
-        read coordinates directly from nearby labels rather than estimating.
+        When ``original_size`` is given the image is assumed to be a resized
+        version of that larger screenshot.  Grid lines and labels are placed so
+        that the *label values* correspond to the original (screen) coordinate
+        system while the *pixel positions* match the current image dimensions.
+        This eliminates the systematic offset that occurs when a VLM API
+        internally downscales the image: the visual positions of the grid lines
+        now agree with their numeric labels.
 
         Args:
             img: PIL Image to annotate (not modified in-place).
-            spacing: Pixel spacing between grid lines (default 100px).
+            spacing: Coordinate spacing in the *original* coordinate system
+                     (default 100 — a grid line every 100 original pixels).
+            original_size: ``(orig_w, orig_h)`` of the full-resolution
+                           screenshot.  If *None* the image is assumed to be
+                           at original resolution and labels equal pixel
+                           positions.
 
         Returns:
             New PIL Image with grid overlay.
@@ -247,6 +319,15 @@ class GUIAgent:
         img = img.copy()
         draw = ImageDraw.Draw(img, "RGBA")
         w, h = img.size
+
+        # Determine mapping from original coords to current image pixels
+        if original_size is not None:
+            orig_w, orig_h = original_size
+            sx = w / orig_w  # scale factor x
+            sy = h / orig_h  # scale factor y
+        else:
+            orig_w, orig_h = w, h
+            sx = sy = 1.0
 
         # Use a small default font
         try:
@@ -261,51 +342,62 @@ class GUIAgent:
         major_grid_color = (255, 0, 0, 90)  # Brighter red for 500px lines
         label_bg = (0, 0, 0, 160)           # Dark background for readability
         label_fg = (255, 255, 0)            # Yellow text
-        tick_color = (255, 255, 0, 120)     # Yellow tick marks
 
-        # Draw vertical lines with labels at top and bottom
-        for x in range(spacing, w, spacing):
-            is_major = (x % 500 == 0)
+        # Draw vertical lines — iterate in original coordinate space
+        for orig_x in range(spacing, orig_w, spacing):
+            px = round(orig_x * sx)  # pixel position in current image
+            if px <= 0 or px >= w:
+                continue
+            is_major = (orig_x % 500 == 0)
             color = major_grid_color if is_major else grid_color
             line_width = 2 if is_major else 1
-            draw.line([(x, 0), (x, h)], fill=color, width=line_width)
+            draw.line([(px, 0), (px, h)], fill=color, width=line_width)
 
-            # Label at top edge
-            label = str(x)
+            # Label at top edge — show ORIGINAL coordinate value
+            label = str(orig_x)
             bbox = font.getbbox(label)
             tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            draw.rectangle([x - tw // 2 - 2, 0, x + tw // 2 + 2, th + 4], fill=label_bg)
-            draw.text((x - tw // 2, 1), label, fill=label_fg, font=font)
+            draw.rectangle([px - tw // 2 - 2, 0, px + tw // 2 + 2, th + 4], fill=label_bg)
+            draw.text((px - tw // 2, 1), label, fill=label_fg, font=font)
 
             # Label at bottom edge
-            draw.rectangle([x - tw // 2 - 2, h - th - 5, x + tw // 2 + 2, h], fill=label_bg)
-            draw.text((x - tw // 2, h - th - 2), label, fill=label_fg, font=font)
+            draw.rectangle([px - tw // 2 - 2, h - th - 5, px + tw // 2 + 2, h], fill=label_bg)
+            draw.text((px - tw // 2, h - th - 2), label, fill=label_fg, font=font)
 
-        # Draw horizontal lines with labels at left and right
-        for y in range(spacing, h, spacing):
-            is_major = (y % 500 == 0)
+        # Draw horizontal lines — iterate in original coordinate space
+        for orig_y in range(spacing, orig_h, spacing):
+            py = round(orig_y * sy)  # pixel position in current image
+            if py <= 0 or py >= h:
+                continue
+            is_major = (orig_y % 500 == 0)
             color = major_grid_color if is_major else grid_color
             line_width = 2 if is_major else 1
-            draw.line([(0, y), (w, y)], fill=color, width=line_width)
+            draw.line([(0, py), (w, py)], fill=color, width=line_width)
 
-            # Label at left edge
-            label = str(y)
+            # Label at left edge — show ORIGINAL coordinate value
+            label = str(orig_y)
             bbox = font.getbbox(label)
             tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            draw.rectangle([0, y - th // 2 - 2, tw + 4, y + th // 2 + 2], fill=label_bg)
-            draw.text((2, y - th // 2), label, fill=label_fg, font=font)
+            draw.rectangle([0, py - th // 2 - 2, tw + 4, py + th // 2 + 2], fill=label_bg)
+            draw.text((2, py - th // 2), label, fill=label_fg, font=font)
 
             # Label at right edge
-            draw.rectangle([w - tw - 5, y - th // 2 - 2, w, y + th // 2 + 2], fill=label_bg)
-            draw.text((w - tw - 3, y - th // 2), label, fill=label_fg, font=font)
+            draw.rectangle([w - tw - 5, py - th // 2 - 2, w, py + th // 2 + 2], fill=label_bg)
+            draw.text((w - tw - 3, py - th // 2), label, fill=label_fg, font=font)
 
         # Draw small crosshair markers at grid intersections for precise reference
         cross_size = 4
         cross_color = (255, 255, 0, 80)
-        for x in range(spacing, w, spacing):
-            for y in range(spacing, h, spacing):
-                draw.line([(x - cross_size, y), (x + cross_size, y)], fill=cross_color, width=1)
-                draw.line([(x, y - cross_size), (x, y + cross_size)], fill=cross_color, width=1)
+        for orig_x in range(spacing, orig_w, spacing):
+            px = round(orig_x * sx)
+            if px <= 0 or px >= w:
+                continue
+            for orig_y in range(spacing, orig_h, spacing):
+                py = round(orig_y * sy)
+                if py <= 0 or py >= h:
+                    continue
+                draw.line([(px - cross_size, py), (px + cross_size, py)], fill=cross_color, width=1)
+                draw.line([(px, py - cross_size), (px, py + cross_size)], fill=cross_color, width=1)
 
         return img.convert("RGB")
 
@@ -910,6 +1002,10 @@ class GUIAgent:
                 # 3. Parse action
                 action, parse_msg = self.parser.parse(vlm_response.text)
 
+                # 3.1 Rescale coordinates from VLM image space to screen space
+                if action is not None:
+                    self._rescale_action_coords(action)
+
                 # Create step record
                 step = AgentStep(
                     step_number=step_number,
@@ -1147,7 +1243,9 @@ class GUIAgent:
         try:
             data = json.loads(response.text)
             if data.get("found"):
-                return (data["x"], data["y"])
+                x = round(data["x"] * self._vlm_scale_factor)
+                y = round(data["y"] * self._vlm_scale_factor)
+                return (x, y)
         except json.JSONDecodeError:
             pass
 
