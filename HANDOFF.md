@@ -107,6 +107,8 @@ config = AgentConfig(
     vlm_image_format="jpeg",    # JPEG instead of PNG (Exp 5)
     vlm_image_quality=75,       # q75 sufficient for VLM (Exp 5)
     vlm_max_edge=1024,          # 1024px instead of 1344px (Exp 5)
+    coordinate_validation="relaxed",  # Relaxed y<100 threshold (Exp 12)
+    action_feedback=True,       # Confirm successful actions to VLM (Exp 15)
 )
 # Use build_enhanced_prompt() from test_exp7_combined.py for Ctrl+L nav hints (Exp 6)
 ```
@@ -403,6 +405,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 12 | `exp/coordinate-validation` | Coord validation strict/relaxed/off | **POSITIVE** | relaxed 100% vs strict 80%, merged |
 | 13 | `exp/per-phase-retry` | Per-phase retry for screenshot/VLM | **NEUTRAL** | 100% both, no transient errors in lab |
 | 14 | `exp/screen-change-detection` | Screen change detection after actions | **NEUTRAL/NEGATIVE** | 34 false positives, +22% overhead |
+| 15 | `exp/action-feedback` | Action confirmation feedback | **STRONG POSITIVE** | **100% vs 80%, -24% steps, -37% time**, merged |
 
 #### Detailed Experiment Findings
 
@@ -447,8 +450,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/coordinate-validation` | `af8624b` | Complete (Exp 12, relaxed validation merged) |
 | `exp/per-phase-retry` | `742aa81` | Complete (Exp 13, neutral) |
 | `exp/screen-change-detection` | `05d6f5a` | Complete (Exp 14, neutral/negative) |
+| `exp/action-feedback` | `a4ff589` | Complete (Exp 15, strong positive, merged) |
 
-#### Experiments 8-14: Hard Tasks, Robustness, and Error Recovery
+#### Experiments 8-15: Hard Tasks, Robustness, and Error Recovery
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -475,6 +479,13 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | baseline | 80% (4/5) | 15.0 | 1,208,973 | 53.8s | 0 |
 | screen_change | 80% (4/5) | 16.2 | 1,322,193 | 65.9s | 34 |
 
+**Exp 15 — Action Confirmation Feedback** (STRONG POSITIVE): Added `action_feedback` flag that injects brief confirmation messages into conversation history after successful actions (e.g., "Action 'click' executed successfully. Clicked at (500, 300)."). Previously, the VLM only received feedback on failed actions — successful actions had no confirmation. Result: **100% vs 80% success rate**, **-24% avg steps** (13.6 vs 18.0), **-37% avg wall time** (46.3s vs 73.5s), **-21% avg tokens**. The Wikipedia Search task that failed baseline (hit 25 max_steps) completed in just 13 steps with feedback. Merged to main with `action_feedback=True` as default.
+
+| Config | Success | Avg Steps | Avg Tokens | Avg Time |
+|--------|---------|-----------|------------|----------|
+| baseline | 80% (4/5) | 18.0 | 1,479,588 | 73.5s |
+| **feedback** | **100% (5/5)** | **13.6** | **1,163,331** | **46.3s** |
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -483,6 +494,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | Ctrl+L nav prompt | Exp 6+7 | `f833242` |
 | Scroll-aware stuck detection | Exp 10 | `4d34b37` |
 | Relaxed coordinate validation (y<100) | Exp 12 | `705b05c` |
+| Action confirmation feedback (default=True) | Exp 15 | `2a4f5c2` |
 
 ---
 
