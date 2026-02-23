@@ -419,6 +419,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 23 | `exp/keyboard-first` | Keyboard-first navigation prompt | **NEUTRAL** | +6% steps, VLM already uses shortcuts appropriately |
 | 24 | `exp/adaptive-delay` | Adaptive step delays (0.2/2.5) | **NEUTRAL/NEGATIVE** | +10% time, current 0.5/1.5 well-tuned |
 | 25 | `exp/scroll-multiplier` | Double scroll distance (2x) | **NEUTRAL** | Same avg steps, no meaningful change |
+| 26 | `exp/early-done-detection` | Early done nudge on success reasoning | **MIXED** | Target case -20% steps, but 21 false-positive nudges |
 
 #### Detailed Experiment Findings
 
@@ -474,8 +475,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/keyboard-first` | `600a5f2` | Complete (Exp 23, neutral) |
 | `exp/adaptive-delay` | `3856928` | Complete (Exp 24, neutral/negative) |
 | `exp/scroll-multiplier` | `5bfc6dd` | Complete (Exp 25, neutral) |
+| `exp/early-done-detection` | `0e95b9c` | Complete (Exp 26, mixed, not merged) |
 
-#### Experiments 8-25: Hard Tasks, Robustness, and Validation
+#### Experiments 8-26: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -546,6 +548,13 @@ Historical comparison: Exp 8 original hard tasks 80% (4/5), Exp 12 baseline 80% 
 **Exp 24 — Adaptive Step Delay** (NEUTRAL/NEGATIVE): Tested reduced base delay (0.2s vs 0.5s) with increased smart_wait (2.5s vs 1.5s). Both configs 100% success but adaptive was +10% slower: 38.6s vs 35.0s. The larger smart_wait_delay added too much overhead on navigation-heavy tasks (DuckDuckGo Click Result: 34.8→45.4s). The reduced base delay couldn't compensate. Current 0.5/1.5 timing is well-tuned. Not merged.
 
 **Exp 25 — Scroll Multiplier** (NEUTRAL): Added `scroll_multiplier` config to amplify scroll distances (2x). Both configs 100% success with identical avg step count (10.2). Wikipedia Article Scroll didn't improve (17→18 steps). Doubling scroll distance doesn't help because the VLM adjusts its scroll count based on what it sees, not a fixed pattern. Not merged.
+
+**Exp 26 — Early Done Detection** (MIXED): Added `early_done_detection` flag that scans VLM reasoning for success indicator phrases (e.g., "i can see the", "the results are displayed", "found the section") and injects a nudge message encouraging the VLM to report done() instead of taking unnecessary verification steps. Both configs 100% success. Average steps identical at 9.6. Wikipedia Article Scroll improved (15→12 steps, -20%, saved ~389K tokens) — the target case worked. However, DuckDuckGo Click Result degraded (9→11 steps, +22%) due to false-positive nudges. The "i can see the" indicator is too broad — it fires on 21 of ~48 total steps (nearly every step where VLM describes screen observations). The VLM correctly ignores false nudges but the extra messages add noise. Needs tighter indicators to be viable. Not merged.
+
+| Config | Success | Avg Steps | Avg Input Tokens | Avg Time | Nudges |
+|--------|---------|-----------|-----------------|----------|--------|
+| baseline | 100% (5/5) | 9.6 | 841,436 | 35.5s | 0 |
+| early-done | 100% (5/5) | 9.6 | 826,766 | 39.3s | 21 |
 
 #### Improvements Merged to Main
 
