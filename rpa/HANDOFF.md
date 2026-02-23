@@ -165,9 +165,11 @@ Multi-tier detection in `agent.py:_check_stuck_loop()`:
 ### Coordinate Validation
 
 `agent.py:_validate_coordinates()` catches common VLM mistakes:
-- Coordinates outside screen bounds
-- Web page elements (search, input, button, etc.) at y < 140 → rejected as browser chrome confusion
+- Coordinates outside screen bounds (always active)
+- Web page elements (search, input, button, etc.) at y < threshold → rejected as browser chrome confusion
 - Any element with "search" in name at y < 100 → rejected as address bar misidentification
+
+**Configurable via `coordinate_validation`**: `"strict"` (y<140), `"relaxed"` (y<100, default), `"off"` (bounds only). Changed from strict to relaxed in Exp 12 because y<140 blocked Wikipedia search icon at y~122.
 
 ### UI-TARS-desktop Deep Analysis (Session 8-9)
 
@@ -394,6 +396,11 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 5 | `exp/screenshot-optimization` | JPEG q75, max_edge=1024 | **POSITIVE** | **-76% tokens**, same success |
 | 6 | `exp/navigation-hints` | Ctrl+L address bar workflow | **POSITIVE** | **-24% steps, -27% time** |
 | 7 | `exp/combined-improvements` | JPEG + Ctrl+L combined | **STRONG POSITIVE** | **-86% tokens, -31% steps, -45% time** |
+| 8 | `exp/harder-tasks` | 5 harder multi-step tasks | **GOOD** | 80% (4/5) with optimized config |
+| 9 | `exp/task-decomposition` | Flat vs numbered sub-steps | **NEUTRAL** | 75% both ways, task-dependent |
+| 10 | `exp/scroll-fix-maxsteps` | Scroll fix + max_steps=35 | **MIXED** | 60% hard tasks, scroll fix merged |
+| 11 | `exp/window-size` | Sliding window 5 vs 10 vs 20 | **NEUTRAL** | Images dominate token cost |
+| 12 | `exp/coordinate-validation` | Coord validation strict/relaxed/off | **POSITIVE** | relaxed 100% vs strict 80%, merged |
 
 #### Detailed Experiment Findings
 
@@ -434,14 +441,26 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/harder-tasks` | `857cded` | Complete (Exp 8, 80% on hard tasks) |
 | `exp/task-decomposition` | `96b5d4d` | Complete (Exp 9, neutral) |
 | `exp/scroll-fix-maxsteps` | `f8b6771` | Complete (Exp 10, scroll fix merged to main) |
+| `exp/window-size` | `a881ee3` | Complete (Exp 11, neutral) |
+| `exp/coordinate-validation` | `af8624b` | Complete (Exp 12, relaxed validation merged) |
 
-#### Experiments 8-10: Hard Tasks and Robustness
+#### Experiments 8-12: Hard Tasks and Robustness
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
 **Exp 9 — Task Decomposition Hint** (NEUTRAL): Tested flat vs numbered sub-step task descriptions on 4 hard tasks. Same 75% success rate both ways. Decomposition fixed one failing task but broke another — it's task-dependent, not a general win. VLM follows rigid step plans too literally when tasks require visual search.
 
 **Exp 10 — Scroll Fix + Higher Max Steps** (60% on 5 hard tasks): Found and fixed a bug in stuck-loop detection where scroll actions were being blocked at 3 consecutive repeats. Added scroll direction/amount to action signature, raised scroll block threshold from 3 to 6. The scroll fix was merged to main. Higher max_steps (35 vs 25) was not beneficial — the agent wastes more time on unproductive attempts.
+
+**Exp 11 — Sliding Window Size** (NEUTRAL): Compared window=5, 10, 20 on 4 tasks. All three window sizes performed similarly. Key finding: **images dominate per-step token cost** (~66-130K tokens/step regardless of window size), so text in conversation history barely matters. Wikipedia Lookup failed across all window sizes due to y<140 coordinate validation false positive.
+
+**Exp 12 — Coordinate Validation Threshold** (POSITIVE): Compared strict (y<140), relaxed (y<100), off (bounds-only) on 5 tasks including 2 Wikipedia tasks. **Relaxed wins**: 100% success, 0 false rejections. Strict only 80% — Wikipedia History Section failed due to 4 false-positive rejections of Wikipedia search icon at y~122. Relaxed mode merged to main as default.
+
+| Mode | Success | Avg Steps | Coord Rejections |
+|------|---------|-----------|------------------|
+| strict | 80% (4/5) | 13.6 | 5 |
+| relaxed | **100% (5/5)** | 13.8 | **0** |
+| off | 100% (5/5) | 13.6 | 0 |
 
 #### Improvements Merged to Main
 
@@ -450,6 +469,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | JPEG q75 1024px defaults | Exp 5+7 | `24c32a4` via merge |
 | Ctrl+L nav prompt | Exp 6+7 | `f833242` |
 | Scroll-aware stuck detection | Exp 10 | `4d34b37` |
+| Relaxed coordinate validation (y<100) | Exp 12 | `705b05c` |
 
 ---
 
