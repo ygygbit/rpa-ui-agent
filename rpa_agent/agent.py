@@ -35,6 +35,8 @@ from .actions.definitions import (
     DoneAction, FailAction
 )
 from .vlm import VLMClient, VLMConfig
+from .vlm.prompts import SystemPrompts
+from .operator import Operator
 
 
 class AgentState(str, Enum):
@@ -88,6 +90,9 @@ class AgentConfig:
     save_screenshots: bool = True
     screenshot_dir: Path = field(default_factory=lambda: Path("./screenshots"))
 
+    # Conversation history
+    max_history_turns: int = 0  # Max messages to send to VLM (0 = unlimited/original behavior)
+
     # Safety settings
     confirm_actions: bool = False  # Ask before executing
     dry_run: bool = False  # Don't actually execute actions
@@ -116,6 +121,7 @@ class AgentStep:
     action: Optional[AnyAction]
     action_result: Optional[ActionResult]
     reasoning: str
+    token_usage: Optional[Dict[str, int]] = None
 
 
 class GUIAgent:
@@ -132,7 +138,8 @@ class GUIAgent:
     def __init__(
         self,
         config: Optional[AgentConfig] = None,
-        console: Optional[Console] = None
+        console: Optional[Console] = None,
+        operator: Optional[Operator] = None
     ):
         """
         Initialize the GUI agent.
@@ -140,12 +147,21 @@ class GUIAgent:
         Args:
             config: Agent configuration
             console: Rich console for output
+            operator: Optional Operator for screenshot/execute (overrides sandbox_mode)
         """
         self.config = config or AgentConfig()
         self.console = console or Console()
+        self.operator = operator
 
         # Initialize components based on mode
-        if self.config.sandbox_mode:
+        if self.operator:
+            # Operator provided — use it for screenshot/execute
+            self.screen = None
+            self.controller = None
+            self.window_manager = None
+            self.config.show_cursor_overlay = False
+            self.config.show_action_notifier = False
+        elif self.config.sandbox_mode:
             # Sandbox mode: use remote screen/controller via HTTP API
             from .core.remote_screen import RemoteScreenCapture
             from .core.remote_controller import RemoteController
@@ -177,6 +193,14 @@ class GUIAgent:
         self._recent_actions: List[str] = []  # Track recent actions for stuck detection
         self._vlm_scale_factor: float = 1.0  # Ratio of original/VLM image size
 
+        # Build system prompt — use operator's action space if available
+        if self.operator:
+            self._system_prompt = SystemPrompts.GUI_AGENT_TEMPLATE.replace(
+                "{{action_space}}", self.operator.action_space()
+            )
+        else:
+            self._system_prompt = None  # Use default (SystemPrompts.GUI_AGENT)
+
         # Ensure screenshot directory exists
         self.config.screenshot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -195,8 +219,11 @@ class GUIAgent:
 
         time.sleep(0.05)  # Brief wait to ensure screen is clear
 
-        # Capture screenshot once
-        img = self.screen.capture(scale=self.config.screenshot_scale)
+        # Capture screenshot — use operator if available, else legacy screen
+        if self.operator:
+            img = self.operator.screenshot()
+        else:
+            img = self.screen.capture(scale=self.config.screenshot_scale)
 
         # Resume overlays immediately after capture
         if self._cursor_overlay:
@@ -408,6 +435,21 @@ class GUIAgent:
                 self.console.print(f"[yellow][DRY RUN] Would execute: {action.action_type.value}[/]")
                 return ActionResult(success=True, action=action)
 
+            # Handle agent-level state actions first (not delegated to operator)
+            if isinstance(action, DoneAction):
+                self.state = AgentState.COMPLETED
+                return ActionResult(success=True, action=action)
+
+            if isinstance(action, FailAction):
+                self.state = AgentState.FAILED
+                return ActionResult(success=False, action=action, error=action.error)
+
+            # Delegate to operator if available
+            if self.operator:
+                self.operator.execute(action)
+                return ActionResult(success=True, action=action)
+
+            # Legacy path: direct controller calls
             if isinstance(action, ClickAction):
                 self.controller.click(action.x, action.y)
 
@@ -494,17 +536,6 @@ class GUIAgent:
             elif isinstance(action, ScreenshotAction):
                 # Just capture a new screenshot (will be done in next iteration)
                 pass
-
-            elif isinstance(action, DoneAction):
-                self.state = AgentState.COMPLETED
-
-            elif isinstance(action, FailAction):
-                self.state = AgentState.FAILED
-                return ActionResult(
-                    success=False,
-                    action=action,
-                    error=action.error
-                )
 
             return ActionResult(success=True, action=action)
 
@@ -992,11 +1023,19 @@ class GUIAgent:
                 self.console.print("[dim]Analyzing screenshot...[/]")
                 # Pass as tuple (base64_data, media_type) for PNG
                 screenshot_data = (base64_img, "image/png")
+
+                # Apply sliding window to conversation history if configured
+                if self.config.max_history_turns > 0 and self._conversation_history:
+                    history_to_send = self._conversation_history[-self.config.max_history_turns:]
+                else:
+                    history_to_send = self._conversation_history
+
                 vlm_response = self.vlm.analyze_screenshot(
                     screenshot=screenshot_data,
                     task=task,
                     screen_info=screen_info,
-                    history=self._conversation_history if self._conversation_history else None
+                    history=history_to_send if history_to_send else None,
+                    system_prompt=self._system_prompt
                 )
 
                 # 3. Parse action
@@ -1014,7 +1053,8 @@ class GUIAgent:
                     vlm_response=vlm_response.text,
                     action=action,
                     action_result=None,
-                    reasoning=action.reasoning if action else parse_msg
+                    reasoning=action.reasoning if action else parse_msg,
+                    token_usage=vlm_response.usage if hasattr(vlm_response, 'usage') else None
                 )
 
                 if action is None:
