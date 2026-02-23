@@ -433,6 +433,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 36 | `exp/jpeg-quality` | JPEG quality q50 (vs q75) | **STRONG POSITIVE** | -34% tokens/step, -23% steps, same 100%, merged |
 | 37 | `exp/jpeg-quality-25` | JPEG quality q25 (vs q50) | **STRONG POSITIVE** | -38% tokens/step, -49% steps, same 100%, merged |
 | 38 | `exp/jpeg-quality-10` | JPEG quality q10 (vs q25) | **POSITIVE** | -49% tokens/step, same steps, same 100%, merged |
+| 39 | `exp/resolution-896` | 896px resolution (vs 1024px) | **NEGATIVE** | avg 8.6→13.8 steps (+60%), not merged |
 
 #### Detailed Experiment Findings
 
@@ -501,6 +502,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/jpeg-quality` | `01b4d9a` | Complete (Exp 36, strong positive, **merged to main**) |
 | `exp/jpeg-quality-25` | `71e356c` | Complete (Exp 37, strong positive, **merged to main**) |
 | `exp/jpeg-quality-10` | `e115c93` | Complete (Exp 38, positive, **merged to main**) |
+| `exp/resolution-896` | `71e9b1d` | Complete (Exp 39, negative, not merged) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -699,6 +701,8 @@ JPEG quality progression summary:
 | q50 (Exp 36) | 66,745 | -34% |
 | q25 (Exp 37) | 46,540 | -54% |
 | **q10 (Exp 38)** | **26,664** | **-74%** |
+
+**Exp 39 — Resolution 896px** (NEGATIVE): Tested 896px (midpoint between failed 768px and working 1024px) with q10 JPEG. Both configs 100% success but 896px averaged 13.8 steps vs 8.6 for 1024px (+60%). Wikipedia Search went 10→21 steps, DuckDuckGo Click Result went 6→17. Per-step tokens only saved -6% (24.3K vs 25.8K). The smaller image makes it harder for the VLM to identify small UI elements and read grid labels accurately, leading to more trial-and-error steps. 1024px is confirmed as the optimal resolution — 768px, 896px both degrade accuracy. Not merged.
 
 #### Improvements Merged to Main
 
