@@ -486,8 +486,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/adaptive-prompt` | `f9b26de` | Complete (Exp 29, positive, **merged to main**) |
 | `exp/expanded-adaptive-hints` | `2510e45` | Complete (Exp 30, strong positive, **merged to main**) |
 | `exp/step-aware-hints` | `ea02f62` | Complete (Exp 31, mixed, not merged) |
+| `exp/task-rewrite` | `5a915a6` | Complete (Exp 32, strong positive, **merged to main**) |
 
-#### Experiments 8-31: Hard Tasks, Robustness, and Validation
+#### Experiments 8-32: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -618,6 +619,17 @@ Per-task step delta with adaptive prompt:
 | Wikipedia Article Scroll | 10 | 22 | +12 |
 | **Average** | **7.8** | **8.2** | **+0.4 (+5%)** |
 
+**Exp 32 — Auto-Navigate + Task Rewrite** (STRONG POSITIVE): Improved on Exp 31 by adding task rewriting after auto-navigation. When auto-navigate succeeds, the task is rewritten from "Go to X.com, search for..." to "The browser is already on X.com. Search for..." — this tells the VLM the page is already loaded so it skips URL navigation entirely. All 5 tasks improved with **no regressions**. Average steps: 7.8 -> 5.4 (**-31%**), tokens -25%, time -18%. The task rewriting fix completely solved Exp 31's Wikipedia Article Scroll regression (10->9 instead of 10->22). Merged to main.
+
+| Task | Baseline | Auto-Rewrite | Delta |
+|------|----------|--------------|-------|
+| DuckDuckGo Search | 5 | **3** | **-2** |
+| Wikipedia Search | 6 | **4** | **-2** |
+| Multi-Step Navigation | 9 | **6** | **-3** |
+| DuckDuckGo Click Result | 9 | **5** | **-4** |
+| Wikipedia Article Scroll | 10 | **9** | **-1** |
+| **Average** | **7.8** | **5.4** | **-2.4 (-31%)** |
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -631,6 +643,7 @@ Per-task step delta with adaptive prompt:
 | Step budget awareness (default=True) | Exp 18 | `7e692e5` |
 | Adaptive prompt hints (default=False) | Exp 29 | `a30d7da` via merge |
 | Expanded adaptive hints (URL nav, Wiki ToC) | Exp 30 | `2510e45` via merge |
+| Auto-navigate + task rewrite (default=False) | Exp 32 | `5a915a6` via merge |
 
 ---
 
