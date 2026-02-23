@@ -111,6 +111,9 @@ class AgentConfig:
     # Step budget awareness: tell VLM how many steps used/remaining
     step_budget_awareness: bool = True
 
+    # Adaptive prompt: inject task-specific hints based on task keywords
+    adaptive_prompt: bool = False
+
     # Safety settings
     confirm_actions: bool = False  # Ask before executing
     dry_run: bool = False  # Don't actually execute actions
@@ -906,6 +909,33 @@ class GUIAgent:
                     pass
         return coords
 
+    def _build_adaptive_hints(self, task: str) -> str:
+        """Generate task-specific hints based on keywords in the task description."""
+        hints = []
+        task_lower = task.lower()
+
+        # Section finding: recommend Ctrl+F
+        if any(kw in task_lower for kw in ["find the", "scroll down to find", "find the section",
+                                            "locate the", "scroll to the"]):
+            hints.append(
+                "STRATEGY: To find a specific section on a long page, use Ctrl+F (Find) to search "
+                "for the section name instead of scrolling. This is faster and more reliable."
+            )
+
+        # Form filling / multi-field tasks
+        if any(kw in task_lower for kw in ["fill in", "fill out", "enter your", "type your"]):
+            hints.append(
+                "STRATEGY: For form fields, use Tab to move between fields instead of clicking each one."
+            )
+
+        # Search tasks with explicit submit
+        if "search for" in task_lower and "click" not in task_lower:
+            hints.append(
+                "TIP: After typing a search query, press Enter to submit rather than clicking the search button."
+            )
+
+        return "\n".join(hints) if hints else ""
+
     def _validate_coordinates(self, action: AnyAction, screen_info: Dict[str, int]) -> Optional[str]:
         """
         Validate that click/interact coordinates are plausible.
@@ -1110,11 +1140,15 @@ class GUIAgent:
                 else:
                     history_to_send = self._conversation_history
 
-                # Build task string with optional step budget awareness
+                # Build task string with optional adaptive hints and step budget awareness
                 task_for_vlm = task
+                if self.config.adaptive_prompt:
+                    adaptive_hints = self._build_adaptive_hints(task)
+                    if adaptive_hints:
+                        task_for_vlm += f"\n\n[Hints]\n{adaptive_hints}\n[End Hints]"
                 if self.config.step_budget_awareness:
                     remaining = self.config.max_steps - step_number
-                    task_for_vlm = f"{task}\n\n[Step {step_number}/{self.config.max_steps} — {remaining} steps remaining]"
+                    task_for_vlm += f"\n\n[Step {step_number}/{self.config.max_steps} — {remaining} steps remaining]"
                     if remaining <= 3:
                         task_for_vlm += " URGENT: Very few steps left. Complete the task NOW or report done/fail."
                     elif remaining <= self.config.max_steps // 3:
