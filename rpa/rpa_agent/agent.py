@@ -91,9 +91,9 @@ class AgentConfig:
     screenshot_dir: Path = field(default_factory=lambda: Path("./screenshots"))
 
     # VLM image settings
-    vlm_image_format: str = "png"  # "png" or "jpeg" — format sent to VLM
+    vlm_image_format: str = "jpeg"  # "png" or "jpeg" — format sent to VLM (jpeg is 76% smaller)
     vlm_image_quality: int = 75  # JPEG quality for VLM images (1-100)
-    vlm_max_edge: int = 1344  # Max long edge for VLM images (pixels)
+    vlm_max_edge: int = 1024  # Max long edge for VLM images (pixels, 1024 is optimal)
 
     # Conversation history
     max_history_turns: int = 0  # Max messages to send to VLM (0 = unlimited/original behavior)
