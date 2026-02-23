@@ -487,8 +487,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/expanded-adaptive-hints` | `2510e45` | Complete (Exp 30, strong positive, **merged to main**) |
 | `exp/step-aware-hints` | `ea02f62` | Complete (Exp 31, mixed, not merged) |
 | `exp/task-rewrite` | `5a915a6` | Complete (Exp 32, strong positive, **merged to main**) |
+| `exp/cumulative-validation-2` | `a6216b8` | Complete (Exp 33, 100% 10/10 validation) |
 
-#### Experiments 8-32: Hard Tasks, Robustness, and Validation
+#### Experiments 8-33: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -629,6 +630,16 @@ Per-task step delta with adaptive prompt:
 | DuckDuckGo Click Result | 9 | **5** | **-4** |
 | Wikipedia Article Scroll | 10 | **9** | **-1** |
 | **Average** | **7.8** | **5.4** | **-2.4 (-31%)** |
+
+**Exp 33 — Cumulative Validation Round 2** (100%, 10/10): Validated all 10 merged improvements stacking cleanly on 5 standard + 5 novel hard tasks. All improvements active: JPEG q75 1024px, Ctrl+L nav, scroll-aware stuck detection, relaxed coord validation, action feedback, smart wait, step budget awareness, adaptive hints, expanded hints, auto-navigate + task rewrite. **100% success on all 10 tasks**. Standard tasks avg 5.8 steps (down 47% from Exp 17's 11.0). Hard tasks avg 11.0 steps (all completed). Wikipedia Back Navigation was hardest at 24 steps (near max) but still completed.
+
+| Category | Success | Avg Steps | Avg Tokens | Avg Time |
+|----------|---------|-----------|------------|----------|
+| Standard (5) | **100% (5/5)** | **5.8** | 553K | 25.9s |
+| Hard (5) | **100% (5/5)** | 11.0 | 1,205K | 49.6s |
+| **Overall (10)** | **100% (10/10)** | **8.4** | 879K | 37.8s |
+
+Historical progress (standard tasks avg steps): Exp 17 (6 imp.) 11.0 -> Exp 18 (7) 9.4 -> Exp 30 (9) 7.2 -> **Exp 33 (10) 5.8**
 
 #### Improvements Merged to Main
 
