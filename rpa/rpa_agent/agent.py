@@ -109,7 +109,7 @@ class AgentConfig:
     smart_wait_delay: float = 1.5  # Extra seconds to wait after navigation actions
 
     # Step budget awareness: tell VLM how many steps used/remaining
-    step_budget_awareness: bool = False
+    step_budget_awareness: bool = True
 
     # Safety settings
     confirm_actions: bool = False  # Ask before executing
