@@ -98,6 +98,9 @@ class AgentConfig:
     # Conversation history
     max_history_turns: int = 0  # Max messages to send to VLM (0 = unlimited/original behavior)
 
+    # Coordinate validation: "strict" (y<140), "relaxed" (y<100), "off" (bounds only)
+    coordinate_validation: str = "relaxed"
+
     # Safety settings
     confirm_actions: bool = False  # Ask before executing
     dry_run: bool = False  # Don't actually execute actions
@@ -867,7 +870,12 @@ class GUIAgent:
 
         Catches common VLM mistakes:
         - Coordinates outside screen bounds
-        - Clicking browser chrome (y < 100) when the element name suggests a web page element
+        - Clicking browser chrome when the element name suggests a web page element
+
+        Behavior controlled by self.config.coordinate_validation:
+        - "strict": Reject web page elements at y < 140 (original behavior)
+        - "relaxed": Reject web page elements at y < 100 only (allows y=100-140 zone)
+        - "off": Only check screen bounds
 
         Args:
             action: The parsed action to validate.
@@ -888,12 +896,20 @@ class GUIAgent:
 
         w, h = screen_info.get("width", 1920), screen_info.get("height", 1080)
 
-        # Out of bounds check
+        # Out of bounds check (always active)
         if x < 0 or x >= w or y < 0 or y >= h:
             return (
                 f"WARNING: Your coordinates ({x}, {y}) are OUTSIDE the screen bounds "
                 f"({w}x{h}). Please re-examine the screenshot and provide valid coordinates."
             )
+
+        # If validation is off, only do bounds check
+        validation_mode = self.config.coordinate_validation
+        if validation_mode == "off":
+            return None
+
+        # Determine chrome threshold based on mode
+        chrome_threshold = 140 if validation_mode == "strict" else 100
 
         # Check if element name suggests a web page element but coordinates are in browser chrome
         element_name = ""
@@ -912,8 +928,8 @@ class GUIAgent:
             "search privately",  # DuckDuckGo specific
         ]
 
-        # If element name matches web page keywords AND y < 140, it's likely wrong
-        if y < 140 and element_name:
+        # If element name matches web page keywords AND y < threshold, it's likely wrong
+        if y < chrome_threshold and element_name:
             is_webpage_element = any(kw in element_name for kw in webpage_keywords)
             # Exclude browser-specific elements that ARE in the chrome area
             browser_keywords = [
@@ -925,10 +941,10 @@ class GUIAgent:
             if is_webpage_element and not is_browser_element:
                 return (
                     f"COORDINATE WARNING: You are trying to click '{element_name}' at y={y}, "
-                    f"but y < 140 is the browser toolbar area (tabs, address bar). "
-                    f"Web page elements like search boxes, buttons, and forms are ALWAYS below y=140. "
+                    f"but y < {chrome_threshold} is the browser toolbar area (tabs, address bar). "
+                    f"Web page elements like search boxes, buttons, and forms are ALWAYS below y={chrome_threshold}. "
                     f"Look at the grid overlay — the browser address bar is near y=50-75. "
-                    f"A 'search bar' at y < 140 is the browser's ADDRESS BAR, NOT the web page search box. "
+                    f"A 'search bar' at y < {chrome_threshold} is the browser's ADDRESS BAR, NOT the web page search box. "
                     f"The web page search box is typically around y=400-550. "
                     f"Please use the grid lines to find the ACTUAL web page search input."
                 )
