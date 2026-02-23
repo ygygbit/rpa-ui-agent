@@ -105,7 +105,7 @@ config = AgentConfig(
     step_delay=0.5,
     max_history_turns=10,       # Sliding window (Session 9)
     vlm_image_format="jpeg",    # JPEG instead of PNG (Exp 5)
-    vlm_image_quality=25,       # q25 sufficient for VLM (Exp 37, was q75→q50→q25)
+    vlm_image_quality=10,       # q10 sufficient for VLM (Exp 38, was q75→q50→q25→q10)
     vlm_max_edge=1024,          # 1024px instead of 1344px (Exp 5)
     coordinate_validation="relaxed",  # Relaxed y<100 threshold (Exp 12)
     action_feedback=True,       # Confirm successful actions to VLM (Exp 15)
@@ -140,7 +140,7 @@ This is the most important subsystem and the one that received the most iteratio
 
 **Why pre-resize**: Anthropic's API internally resizes images > 1568px. If we sent a 1920px image with grid labels at pixel positions, the API downscales it but the labels still say "1920" while the VLM sees a ~1200px image. Grid label positions no longer match visual positions, causing ~30% systematic offset. By pre-resizing to 1344px (or 1024px), we guarantee no further API resizing occurs.
 
-**JPEG vs PNG**: JPEG q25 at 1024px reduces base64 image size by ~90%+, cutting per-step input tokens from ~575K to ~47K. VLM accuracy is unaffected — coordinate grid labels remain readable even at q25. (Quality progression: Exp 5 established JPEG, Exp 36 dropped q75→q50 saving 34%/step, Exp 37 dropped q50→q25 saving another 38%/step.)
+**JPEG vs PNG**: JPEG q10 at 1024px reduces base64 image size by ~95%+, cutting per-step input tokens from ~575K to ~27K. VLM accuracy is unaffected — coordinate grid labels remain readable even at extreme q10 compression. (Quality progression: q75→q50 -34%/step, q50→q25 -38%/step, q25→q10 -49%/step. Total: -74% vs q75.)
 
 ### VLM Configuration
 
@@ -432,6 +432,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 35 | `exp/reduced-resolution` | 768px max edge (vs 1024px) | **NEGATIVE** | avg 5.4→14.0 steps (+159%), not merged |
 | 36 | `exp/jpeg-quality` | JPEG quality q50 (vs q75) | **STRONG POSITIVE** | -34% tokens/step, -23% steps, same 100%, merged |
 | 37 | `exp/jpeg-quality-25` | JPEG quality q25 (vs q50) | **STRONG POSITIVE** | -38% tokens/step, -49% steps, same 100%, merged |
+| 38 | `exp/jpeg-quality-10` | JPEG quality q10 (vs q25) | **POSITIVE** | -49% tokens/step, same steps, same 100%, merged |
 
 #### Detailed Experiment Findings
 
@@ -499,6 +500,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/reduced-resolution` | `cc6a11e` | Complete (Exp 35, negative, not merged) |
 | `exp/jpeg-quality` | `01b4d9a` | Complete (Exp 36, strong positive, **merged to main**) |
 | `exp/jpeg-quality-25` | `71e356c` | Complete (Exp 37, strong positive, **merged to main**) |
+| `exp/jpeg-quality-10` | `e115c93` | Complete (Exp 38, positive, **merged to main**) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -688,6 +690,16 @@ Per-task comparison:
 | DuckDuckGo Click Result | 9 | 5 | -4 | -38% |
 | Wikipedia Article Scroll | 13 | 9 | -4 | -34% |
 
+**Exp 38 — JPEG Quality Extreme Floor (q10 vs q25)** (POSITIVE): Pushed JPEG quality to extreme q10. Both configs 100% success with identical avg steps (9.8). Per-step tokens dropped by **-49%** (51.8K→26.7K). Individual task step counts were mixed: 3/5 tasks took 1 more step at q10, Wikipedia Search took 6 more (14→20), but Wikipedia Article Scroll improved by 9 steps (22→13, VLM variability). The q10 compression artifacts are severe but the VLM still reads grid labels and identifies UI elements. Token savings are substantial. Changed default from 25 to 10. Merged to main.
+
+JPEG quality progression summary:
+| Quality | Avg Tok/Step | Cumulative Savings vs q75 |
+|---------|-------------|---------------------------|
+| q75 (Exp 36 baseline) | 101,812 | — |
+| q50 (Exp 36) | 66,745 | -34% |
+| q25 (Exp 37) | 46,540 | -54% |
+| **q10 (Exp 38)** | **26,664** | **-74%** |
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -705,6 +717,7 @@ Per-task comparison:
 | Defaults: adaptive_prompt=True, auto_navigate=True | Exp 34 | `c356a85` via merge |
 | JPEG quality reduced from q75 to q50 (default=50) | Exp 36 | `01b4d9a` via merge |
 | JPEG quality reduced from q50 to q25 (default=25) | Exp 37 | `71e356c` via merge |
+| JPEG quality reduced from q25 to q10 (default=10) | Exp 38 | `e115c93` via merge |
 
 ---
 
