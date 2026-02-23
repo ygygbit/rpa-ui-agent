@@ -114,6 +114,9 @@ class AgentConfig:
     # Adaptive prompt: inject task-specific hints based on task keywords
     adaptive_prompt: bool = False
 
+    # Auto-navigate: extract URL from task and navigate before VLM loop
+    auto_navigate: bool = False
+
     # Safety settings
     confirm_actions: bool = False  # Ask before executing
     dry_run: bool = False  # Don't actually execute actions
@@ -950,6 +953,42 @@ class GUIAgent:
 
         return "\n".join(hints) if hints else ""
 
+    def _extract_target_url(self, task: str) -> Optional[str]:
+        """Extract a target URL from the task description.
+
+        Matches patterns like 'Go to duckduckgo.com', 'Open en.wikipedia.org',
+        'Navigate to youtube.com'. Returns the URL with scheme or None.
+        """
+        import re
+        pattern = r'(?:go to|open|visit|navigate to)\s+((?:https?://)?[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/[^\s,]*)?)'
+        match = re.search(pattern, task.lower())
+        if match:
+            url = match.group(1)
+            if not url.startswith('http'):
+                url = 'https://' + url
+            return url
+        return None
+
+    def _rewrite_task_after_navigate(self, task: str, url: str) -> str:
+        """Rewrite task description after auto-navigation.
+
+        Removes the 'Go to X.com' prefix and prepends context that
+        the browser is already on the target page.
+        """
+        import re
+        # Remove the navigation phrase from the task
+        # Match: "Go to X.com, " or "Go to X.com and " or "Go to X.com"
+        pattern = r'(?:go to|open|visit|navigate to)\s+(?:https?://)?[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/[^\s,]*)?\s*(?:,\s*(?:and\s+)?|(?:\s+and\s+)|\s*$)'
+        rewritten = re.sub(pattern, '', task, count=1, flags=re.IGNORECASE).strip()
+        # Remove leading "and " if present after substitution
+        rewritten = re.sub(r'^and\s+', '', rewritten, flags=re.IGNORECASE).strip()
+        # Capitalize first letter
+        if rewritten:
+            rewritten = rewritten[0].upper() + rewritten[1:]
+        # Prepend context about current page
+        domain = url.replace('https://', '').replace('http://', '').rstrip('/')
+        return f"The browser is already on {domain}. {rewritten}"
+
     def _validate_coordinates(self, action: AnyAction, screen_info: Dict[str, int]) -> Optional[str]:
         """
         Validate that click/interact coordinates are plausible.
@@ -1125,6 +1164,36 @@ class GUIAgent:
             self._action_notifier.show_action("thinking", f"Task: {task[:50]}...")
 
         self.console.print(Panel(f"[bold]Task:[/] {task}", title="GUI Agent Started"))
+
+        # Auto-navigate: extract URL from task, navigate directly, rewrite task
+        if self.config.auto_navigate:
+            target_url = self._extract_target_url(task)
+            if target_url:
+                self.console.print(f"[cyan]Auto-navigate: navigating to {target_url}[/]")
+                try:
+                    import httpx
+                    sandbox_url = None
+                    if self.operator and hasattr(self.operator, '_controller'):
+                        sandbox_url = getattr(self.operator._controller, 'base_url', None)
+                    if sandbox_url:
+                        resp = httpx.post(
+                            f"{sandbox_url}/chrome/navigate",
+                            params={"url": target_url},
+                            timeout=10,
+                        )
+                        if resp.status_code == 200:
+                            self.console.print(f"[cyan]Auto-navigate: page loading...[/]")
+                            import time as _time
+                            _time.sleep(2)
+                            # Rewrite task to remove navigation and add context
+                            task = self._rewrite_task_after_navigate(task, target_url)
+                            self.console.print(f"[cyan]Rewritten task: {task}[/]")
+                        else:
+                            self.console.print(f"[yellow]Auto-navigate: failed ({resp.status_code})[/]")
+                    else:
+                        self.console.print("[yellow]Auto-navigate: no sandbox URL available[/]")
+                except Exception as e:
+                    self.console.print(f"[yellow]Auto-navigate: error - {e}[/]")
 
         step_number = 0
         retry_count = 0
