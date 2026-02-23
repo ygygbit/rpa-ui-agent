@@ -102,7 +102,7 @@ class AgentConfig:
     coordinate_validation: str = "relaxed"
 
     # Action feedback: inject confirmation message after successful actions
-    action_feedback: bool = False
+    action_feedback: bool = True
 
     # Safety settings
     confirm_actions: bool = False  # Ask before executing
