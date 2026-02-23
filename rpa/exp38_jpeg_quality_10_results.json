@@ -1,0 +1,220 @@
+[
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "q25",
+    "outcome": "completed",
+    "step_count": 3,
+    "total_input_tokens": 105411,
+    "total_output_tokens": 287,
+    "wall_time_seconds": 13.9,
+    "jpeg_quality": 25,
+    "per_step_input_tokens": [
+      35524,
+      35554,
+      34333
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "q25",
+    "outcome": "completed",
+    "step_count": 14,
+    "total_input_tokens": 788737,
+    "total_output_tokens": 2388,
+    "wall_time_seconds": 65.1,
+    "jpeg_quality": 25,
+    "per_step_input_tokens": [
+      53624,
+      54535,
+      51491,
+      56251,
+      56474,
+      58588,
+      53835,
+      57143,
+      58096,
+      59366,
+      58901,
+      59404,
+      58356,
+      52673
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "q25",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 198746,
+    "total_output_tokens": 614,
+    "wall_time_seconds": 22.2,
+    "jpeg_quality": 25,
+    "per_step_input_tokens": [
+      35346,
+      35518,
+      34448,
+      49074,
+      44360
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "q25",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 190578,
+    "total_output_tokens": 510,
+    "wall_time_seconds": 21.8,
+    "jpeg_quality": 25,
+    "per_step_input_tokens": [
+      35434,
+      35586,
+      35506,
+      48179,
+      35873
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "q25",
+    "outcome": "completed",
+    "step_count": 22,
+    "total_input_tokens": 1254693,
+    "total_output_tokens": 4001,
+    "wall_time_seconds": 99.0,
+    "jpeg_quality": 25,
+    "per_step_input_tokens": [
+      53741,
+      54735,
+      54889,
+      55338,
+      53215,
+      54345,
+      55091,
+      54936,
+      56278,
+      55061,
+      55624,
+      57206,
+      57284,
+      56121,
+      56643,
+      56744,
+      62191,
+      62418,
+      58828,
+      59109,
+      65336,
+      59560
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "q10",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 94572,
+    "total_output_tokens": 495,
+    "wall_time_seconds": 17.7,
+    "jpeg_quality": 10,
+    "per_step_input_tokens": [
+      21721,
+      21848,
+      21950,
+      29053
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "q10",
+    "outcome": "completed",
+    "step_count": 20,
+    "total_input_tokens": 560189,
+    "total_output_tokens": 1894,
+    "wall_time_seconds": 77.1,
+    "jpeg_quality": 10,
+    "per_step_input_tokens": [
+      30143,
+      30284,
+      30320,
+      25400,
+      26211,
+      27249,
+      26184,
+      30859,
+      31150,
+      31151,
+      27566,
+      27684,
+      27874,
+      27995,
+      28493,
+      24371,
+      24980,
+      25438,
+      25636,
+      31201
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "q10",
+    "outcome": "completed",
+    "step_count": 6,
+    "total_input_tokens": 138378,
+    "total_output_tokens": 1227,
+    "wall_time_seconds": 24.6,
+    "jpeg_quality": 10,
+    "per_step_input_tokens": [
+      21725,
+      21896,
+      22294,
+      22615,
+      22835,
+      27013
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "q10",
+    "outcome": "completed",
+    "step_count": 6,
+    "total_input_tokens": 138525,
+    "total_output_tokens": 767,
+    "wall_time_seconds": 25.9,
+    "jpeg_quality": 10,
+    "per_step_input_tokens": [
+      21713,
+      21574,
+      22055,
+      22134,
+      28105,
+      22944
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "q10",
+    "outcome": "completed",
+    "step_count": 13,
+    "total_input_tokens": 374874,
+    "total_output_tokens": 2129,
+    "wall_time_seconds": 50.0,
+    "jpeg_quality": 10,
+    "per_step_input_tokens": [
+      30193,
+      26268,
+      26818,
+      26898,
+      23324,
+      23964,
+      24184,
+      24324,
+      32144,
+      32701,
+      32941,
+      35569,
+      35546
+    ]
+  }
+]
