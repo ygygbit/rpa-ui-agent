@@ -1,0 +1,216 @@
+[
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "baseline",
+    "outcome": "completed",
+    "step_count": 7,
+    "total_input_tokens": 489299,
+    "total_output_tokens": 581,
+    "wall_time_seconds": 24.0,
+    "per_step_input_tokens": [
+      66910,
+      66995,
+      74793,
+      67191,
+      71966,
+      72265,
+      69179
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "baseline",
+    "outcome": "completed",
+    "step_count": 8,
+    "total_input_tokens": 744073,
+    "total_output_tokens": 569,
+    "wall_time_seconds": 28.0,
+    "per_step_input_tokens": [
+      66756,
+      67090,
+      77944,
+      67323,
+      116318,
+      117651,
+      109290,
+      121701
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "baseline",
+    "outcome": "completed",
+    "step_count": 9,
+    "total_input_tokens": 678446,
+    "total_output_tokens": 684,
+    "wall_time_seconds": 31.3,
+    "per_step_input_tokens": [
+      66856,
+      66901,
+      74613,
+      67330,
+      72098,
+      72164,
+      69231,
+      100428,
+      88825
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "baseline",
+    "outcome": "completed",
+    "step_count": 13,
+    "total_input_tokens": 1083616,
+    "total_output_tokens": 2422,
+    "wall_time_seconds": 53.3,
+    "per_step_input_tokens": [
+      66750,
+      67089,
+      74949,
+      67464,
+      72014,
+      72234,
+      71054,
+      103096,
+      103195,
+      103428,
+      103790,
+      104163,
+      74390
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "baseline",
+    "outcome": "completed",
+    "step_count": 20,
+    "total_input_tokens": 2253585,
+    "total_output_tokens": 2131,
+    "wall_time_seconds": 76.0,
+    "per_step_input_tokens": [
+      66766,
+      67039,
+      78158,
+      67386,
+      116458,
+      117805,
+      117805,
+      110036,
+      117986,
+      114693,
+      123004,
+      130694,
+      117983,
+      114660,
+      134804,
+      131895,
+      134284,
+      134280,
+      128873,
+      128976
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "budget",
+    "outcome": "completed",
+    "step_count": 7,
+    "total_input_tokens": 492051,
+    "total_output_tokens": 565,
+    "wall_time_seconds": 23.8,
+    "per_step_input_tokens": [
+      66838,
+      66939,
+      74906,
+      67214,
+      72253,
+      72248,
+      71653
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "budget",
+    "outcome": "completed",
+    "step_count": 9,
+    "total_input_tokens": 862175,
+    "total_output_tokens": 635,
+    "wall_time_seconds": 33.2,
+    "per_step_input_tokens": [
+      66774,
+      67108,
+      77959,
+      67336,
+      116329,
+      117799,
+      117991,
+      109086,
+      121793
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "budget",
+    "outcome": "completed",
+    "step_count": 8,
+    "total_input_tokens": 581418,
+    "total_output_tokens": 692,
+    "wall_time_seconds": 25.8,
+    "per_step_input_tokens": [
+      66936,
+      67010,
+      74659,
+      67209,
+      71995,
+      72276,
+      71503,
+      89830
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "budget",
+    "outcome": "completed",
+    "step_count": 9,
+    "total_input_tokens": 667786,
+    "total_output_tokens": 721,
+    "wall_time_seconds": 31.6,
+    "per_step_input_tokens": [
+      66775,
+      67110,
+      74924,
+      67370,
+      71991,
+      72236,
+      71216,
+      103588,
+      72576
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "budget",
+    "outcome": "completed",
+    "step_count": 14,
+    "total_input_tokens": 1481678,
+    "total_output_tokens": 1343,
+    "wall_time_seconds": 52.9,
+    "per_step_input_tokens": [
+      66888,
+      66950,
+      78234,
+      67378,
+      116800,
+      117688,
+      117790,
+      117783,
+      114605,
+      117889,
+      131970,
+      117874,
+      131958,
+      117871
+    ]
+  }
+]
