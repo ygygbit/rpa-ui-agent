@@ -489,8 +489,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/task-rewrite` | `5a915a6` | Complete (Exp 32, strong positive, **merged to main**) |
 | `exp/cumulative-validation-2` | `a6216b8` | Complete (Exp 33, 100% 10/10 validation) |
 | `exp/defaults-update` | `c356a85` | Complete (Exp 34, defaults to True, **merged to main**) |
+| `exp/reduced-resolution` | `cc6a11e` | Complete (Exp 35, negative, not merged) |
 
-#### Experiments 8-34: Hard Tasks, Robustness, and Validation
+#### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -643,6 +644,8 @@ Per-task step delta with adaptive prompt:
 Historical progress (standard tasks avg steps): Exp 17 (6 imp.) 11.0 -> Exp 18 (7) 9.4 -> Exp 30 (9) 7.2 -> **Exp 33 (10) 5.8**
 
 **Exp 34 — Default Config Update** (POSITIVE): Changed `adaptive_prompt` and `auto_navigate` defaults from `False` to `True` so new users get all optimizations out of the box. Validated: 100% (5/5), avg 6.4 steps with plain `AgentConfig()` — no explicit flag overrides needed. All 11 improvements are now active by default. Merged to main.
+
+**Exp 35 — Reduced Image Resolution** (NEGATIVE): Tested 768px max edge (vs current 1024px default). Per-step tokens reduced by 25% (97K->73K), but VLM accuracy degraded badly. Average steps 5.4->14.0 (+159%). Wikipedia Search went 4->23 steps (+475%). Only DDG Search (simplest task, 3 steps both) was unaffected. The VLM needs 1024px resolution to accurately identify small UI elements and read text. Not merged.
 
 #### Improvements Merged to Main
 
