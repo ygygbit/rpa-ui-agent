@@ -1,0 +1,188 @@
+[
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "baseline",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 347349,
+    "total_output_tokens": 520,
+    "wall_time_seconds": 18.4,
+    "rewritten_task": "none",
+    "per_step_input_tokens": [
+      66838,
+      67163,
+      71853,
+      72201,
+      69294
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "baseline",
+    "outcome": "completed",
+    "step_count": 6,
+    "total_input_tokens": 598805,
+    "total_output_tokens": 468,
+    "wall_time_seconds": 21.2,
+    "rewritten_task": "none",
+    "per_step_input_tokens": [
+      66853,
+      67020,
+      116293,
+      117563,
+      109238,
+      121838
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "baseline",
+    "outcome": "completed",
+    "step_count": 9,
+    "total_input_tokens": 687303,
+    "total_output_tokens": 790,
+    "wall_time_seconds": 35.4,
+    "rewritten_task": "none",
+    "per_step_input_tokens": [
+      66959,
+      66998,
+      65268,
+      72128,
+      72288,
+      72368,
+      72656,
+      105120,
+      93518
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "baseline",
+    "outcome": "completed",
+    "step_count": 9,
+    "total_input_tokens": 728574,
+    "total_output_tokens": 1071,
+    "wall_time_seconds": 33.8,
+    "rewritten_task": "none",
+    "per_step_input_tokens": [
+      66826,
+      67190,
+      70110,
+      72233,
+      72199,
+      102194,
+      102278,
+      102415,
+      73129
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "baseline",
+    "outcome": "completed",
+    "step_count": 10,
+    "total_input_tokens": 1084657,
+    "total_output_tokens": 942,
+    "wall_time_seconds": 41.1,
+    "rewritten_task": "none",
+    "per_step_input_tokens": [
+      66921,
+      67061,
+      116674,
+      117618,
+      109828,
+      118085,
+      114468,
+      115134,
+      129254,
+      129614
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "auto_rewrite",
+    "outcome": "completed",
+    "step_count": 3,
+    "total_input_tokens": 212582,
+    "total_output_tokens": 269,
+    "wall_time_seconds": 14.8,
+    "rewritten_task": "The browser is already on duckduckgo.com. Search for 'python programming'",
+    "per_step_input_tokens": [
+      71768,
+      71916,
+      68898
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "auto_rewrite",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 463623,
+    "total_output_tokens": 464,
+    "wall_time_seconds": 18.6,
+    "rewritten_task": "The browser is already on en.wikipedia.org. Search for 'Artificial intelligence', and click the search button to see results",
+    "per_step_input_tokens": [
+      115944,
+      117238,
+      108801,
+      121640
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "auto_rewrite",
+    "outcome": "completed",
+    "step_count": 6,
+    "total_input_tokens": 481404,
+    "total_output_tokens": 640,
+    "wall_time_seconds": 25.6,
+    "rewritten_task": "The browser is already on duckduckgo.com. Search for 'weather forecast', then scroll down to see more results",
+    "per_step_input_tokens": [
+      71838,
+      71976,
+      72170,
+      69230,
+      103345,
+      92845
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "auto_rewrite",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 387042,
+    "total_output_tokens": 521,
+    "wall_time_seconds": 23.0,
+    "rewritten_task": "The browser is already on duckduckgo.com. Search for 'OpenAI', and click on the first search result link",
+    "per_step_input_tokens": [
+      71831,
+      71990,
+      68741,
+      101841,
+      72639
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "auto_rewrite",
+    "outcome": "completed",
+    "step_count": 9,
+    "total_input_tokens": 1045688,
+    "total_output_tokens": 1706,
+    "wall_time_seconds": 40.4,
+    "rewritten_task": "The browser is already on en.wikipedia.org. Search for 'Machine learning', click on the article, and scroll down to find the 'History' section",
+    "per_step_input_tokens": [
+      115895,
+      117376,
+      117800,
+      117100,
+      115554,
+      115188,
+      115960,
+      115345,
+      115470
+    ]
+  }
+]
