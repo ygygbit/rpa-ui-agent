@@ -109,6 +109,8 @@ config = AgentConfig(
     vlm_max_edge=1024,          # 1024px instead of 1344px (Exp 5)
     coordinate_validation="relaxed",  # Relaxed y<100 threshold (Exp 12)
     action_feedback=True,       # Confirm successful actions to VLM (Exp 15)
+    smart_wait=True,            # Extra delay after navigation actions (Exp 16)
+    smart_wait_delay=1.5,       # 1.5s wait for page loads (Exp 16)
 )
 # Use build_enhanced_prompt() from test_exp7_combined.py for Ctrl+L nav hints (Exp 6)
 ```
@@ -406,6 +408,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 13 | `exp/per-phase-retry` | Per-phase retry for screenshot/VLM | **NEUTRAL** | 100% both, no transient errors in lab |
 | 14 | `exp/screen-change-detection` | Screen change detection after actions | **NEUTRAL/NEGATIVE** | 34 false positives, +22% overhead |
 | 15 | `exp/action-feedback` | Action confirmation feedback | **STRONG POSITIVE** | **100% vs 80%, -24% steps, -37% time**, merged |
+| 16 | `exp/smart-wait` | Smart wait after navigation actions | **MODERATE POSITIVE** | **-13% steps, -18% tokens**, merged |
 
 #### Detailed Experiment Findings
 
@@ -451,8 +454,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/per-phase-retry` | `742aa81` | Complete (Exp 13, neutral) |
 | `exp/screen-change-detection` | `05d6f5a` | Complete (Exp 14, neutral/negative) |
 | `exp/action-feedback` | `a4ff589` | Complete (Exp 15, strong positive, merged) |
+| `exp/smart-wait` | `22aab8f` | Complete (Exp 16, moderate positive, merged) |
 
-#### Experiments 8-15: Hard Tasks, Robustness, and Error Recovery
+#### Experiments 8-16: Hard Tasks, Robustness, and Error Recovery
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -486,6 +490,13 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | baseline | 80% (4/5) | 18.0 | 1,479,588 | 73.5s |
 | **feedback** | **100% (5/5)** | **13.6** | **1,163,331** | **46.3s** |
 
+**Exp 16 — Smart Wait After Navigation** (MODERATE POSITIVE): Added `smart_wait` flag that adds extra delay (1.5s) after actions likely to trigger page loads (clicks, Enter key presses). This gives pages time to fully render before the next screenshot. Both configs achieved 100% success, but smart wait reduced avg steps by 13% and tokens by 18%. Wikipedia Article Scroll improved from 22 to 15 steps. One task (Multi-Step Nav) got slightly worse (12 -> 15 steps) due to unnecessary waits on in-page clicks that don't cause navigation. Merged to main with `smart_wait=True` as default.
+
+| Config | Success | Avg Steps | Avg Tokens | Avg Time |
+|--------|---------|-----------|------------|----------|
+| baseline | 100% (5/5) | 12.6 | 1,133,102 | 44.7s |
+| **smart_wait** | **100% (5/5)** | **11.0** | **931,024** | **40.8s** |
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -495,6 +506,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | Scroll-aware stuck detection | Exp 10 | `4d34b37` |
 | Relaxed coordinate validation (y<100) | Exp 12 | `705b05c` |
 | Action confirmation feedback (default=True) | Exp 15 | `2a4f5c2` |
+| Smart wait after navigation (default=True) | Exp 16 | `29d028f` |
 
 ---
 
