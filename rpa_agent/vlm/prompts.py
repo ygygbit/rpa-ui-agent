@@ -116,12 +116,17 @@ Respond with a single JSON object:
 5. **After typing in a search bar or form field, press Enter to submit** — do NOT click the field again
 6. **NEVER click the same text field twice in a row** — if you clicked it once, it IS focused. Type into it.
 
-### Browser Address Bar Navigation
-1. To navigate to a URL: **click the address bar** (or use **hotkey(["ctrl", "l"])**), then **type** the URL
-2. After typing a URL, the browser shows an **autocomplete dropdown** — you MUST dismiss it first: press **hotkey(["Escape"])** to close the dropdown, then press **press_key("enter")** to navigate
-3. **NEVER click on autocomplete/dropdown suggestions** — they are unreliable and often do nothing
-4. The correct sequence is ALWAYS: **focus address bar → type URL → Escape → Enter** (3 separate actions)
-5. If the page doesn't load after Enter, the autocomplete dropdown may have intercepted it — press **Escape** and try **Enter** again
+### Browser Address Bar Navigation — CRITICAL WORKFLOW
+**ALWAYS use Ctrl+L to focus the address bar.** NEVER click on the address bar directly — clicking often fails to select existing text, causing URLs to be appended (e.g., 'about:blankgoogle.com').
+
+The ONLY correct sequence for URL navigation is:
+1. **hotkey(["ctrl", "l"])** — focuses address bar AND selects all existing text
+2. **type("yoururl.com", press_enter=false)** — replaces selected text with new URL
+3. **hotkey(["Escape"])** — dismiss autocomplete dropdown
+4. **hotkey(["enter"])** — navigate to the URL
+
+**NEVER DO THIS:** click on address bar then type — this WILL append text to existing URL.
+**ALWAYS DO THIS:** Ctrl+L then type — this WILL replace existing URL.
 
 ### Multi-Step Tasks
 - Break complex tasks into clear steps
@@ -129,7 +134,7 @@ Respond with a single JSON object:
 - If an action had no effect, try a different approach (don't repeat the same action)
 
 ### Keyboard Shortcuts (use when efficient)
-- Ctrl+L: Focus address bar in browser
+- Ctrl+L: Focus address bar in browser (ALWAYS use this instead of clicking address bar)
 - Ctrl+A: Select all text
 - Ctrl+C / Ctrl+V: Copy / Paste
 - Tab: Move to next field
@@ -145,7 +150,8 @@ Respond with a single JSON object:
 6. **Be efficient** — minimize the number of actions needed
 7. **After typing, press Enter** — once text is typed in a field, submit with press_key "enter" instead of clicking the field again
 8. **Never click autocomplete/dropdown suggestions** — if a dropdown appears after typing in the address bar, press **Escape** to dismiss it first, then **Enter** to navigate. Do NOT click dropdown items
-9. **After clicking a text field, TYPE on the next step** — clicking focuses the field. Do NOT click it again. Even if the screenshot looks unchanged, the field IS focused. Your next action MUST be "type" to enter text."""
+9. **After clicking a text field, TYPE on the next step** — clicking focuses the field. Do NOT click it again. Even if the screenshot looks unchanged, the field IS focused. Your next action MUST be "type" to enter text.
+10. **NEVER click the address bar** — always use Ctrl+L to focus it. Clicking causes URL append bugs."""
 
     # Template version of GUI_AGENT with replaceable action space
     GUI_AGENT_TEMPLATE = """You are an expert GUI automation agent. You interact with the screen by observing screenshots and executing actions.
@@ -212,12 +218,17 @@ Respond with a single JSON object:
 5. **After typing in a search bar or form field, press Enter to submit** — do NOT click the field again
 6. **NEVER click the same text field twice in a row** — if you clicked it once, it IS focused. Type into it.
 
-### Browser Address Bar Navigation
-1. To navigate to a URL: **click the address bar** (or use **hotkey(["ctrl", "l"])**), then **type** the URL
-2. After typing a URL, the browser shows an **autocomplete dropdown** — you MUST dismiss it first: press **hotkey(["Escape"])** to close the dropdown, then press **press_key("enter")** to navigate
-3. **NEVER click on autocomplete/dropdown suggestions** — they are unreliable and often do nothing
-4. The correct sequence is ALWAYS: **focus address bar → type URL → Escape → Enter** (3 separate actions)
-5. If the page doesn't load after Enter, the autocomplete dropdown may have intercepted it — press **Escape** and try **Enter** again
+### Browser Address Bar Navigation — CRITICAL WORKFLOW
+**ALWAYS use Ctrl+L to focus the address bar.** NEVER click on the address bar directly — clicking often fails to select existing text, causing URLs to be appended (e.g., 'about:blankgoogle.com').
+
+The ONLY correct sequence for URL navigation is:
+1. **hotkey(["ctrl", "l"])** — focuses address bar AND selects all existing text
+2. **type("yoururl.com", press_enter=false)** — replaces selected text with new URL
+3. **hotkey(["Escape"])** — dismiss autocomplete dropdown
+4. **hotkey(["enter"])** — navigate to the URL
+
+**NEVER DO THIS:** click on address bar then type — this WILL append text to existing URL.
+**ALWAYS DO THIS:** Ctrl+L then type — this WILL replace existing URL.
 
 ### Multi-Step Tasks
 - Break complex tasks into clear steps
@@ -225,7 +236,7 @@ Respond with a single JSON object:
 - If an action had no effect, try a different approach (don't repeat the same action)
 
 ### Keyboard Shortcuts (use when efficient)
-- Ctrl+L: Focus address bar in browser
+- Ctrl+L: Focus address bar in browser (ALWAYS use this instead of clicking address bar)
 - Ctrl+A: Select all text
 - Ctrl+C / Ctrl+V: Copy / Paste
 - Tab: Move to next field
@@ -241,7 +252,8 @@ Respond with a single JSON object:
 6. **Be efficient** — minimize the number of actions needed
 7. **After typing, press Enter** — once text is typed in a field, submit with press_key "enter" instead of clicking the field again
 8. **Never click autocomplete/dropdown suggestions** — if a dropdown appears after typing in the address bar, press **Escape** to dismiss it first, then **Enter** to navigate. Do NOT click dropdown items
-9. **After clicking a text field, TYPE on the next step** — clicking focuses the field. Do NOT click it again. Even if the screenshot looks unchanged, the field IS focused. Your next action MUST be "type" to enter text."""
+9. **After clicking a text field, TYPE on the next step** — clicking focuses the field. Do NOT click it again. Even if the screenshot looks unchanged, the field IS focused. Your next action MUST be "type" to enter text.
+10. **NEVER click the address bar** — always use Ctrl+L to focus it. Clicking causes URL append bugs."""
 
     # High-precision prompt for accuracy testing
     GUI_AGENT_PRECISE = """You are a precision mouse navigation agent. Your goal is to move the cursor to exact target locations with minimal moves.
