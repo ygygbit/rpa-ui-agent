@@ -414,6 +414,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 18 | `exp/step-budget-awareness` | Step budget awareness for VLM | **MODERATE POSITIVE** | **-18% steps, -22% tokens, -21% time**, merged |
 | 19 | `exp/concise-reasoning` | Concise reasoning mode | **NEUTRAL** | No meaningful change, VLM already concise |
 | 20 | `exp/action-history-context` | Action history in task context | **NEUTRAL** | -6% steps, -8% tokens, within variance |
+| 21 | `exp/dual-screenshot` | Before/after dual screenshot | **NEUTRAL/NEGATIVE** | -6% steps but +69% input tokens, +8% time |
 
 #### Detailed Experiment Findings
 
@@ -464,8 +465,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/step-budget-awareness` | `ab934d6` | Complete (Exp 18, moderate positive, merged) |
 | `exp/concise-reasoning` | `26be4d3` | Complete (Exp 19, neutral) |
 | `exp/action-history-context` | `d2e0b7d` | Complete (Exp 20, neutral) |
+| `exp/dual-screenshot` | `5ed7364` | Complete (Exp 21, neutral/negative) |
 
-#### Experiments 8-20: Hard Tasks, Robustness, and Validation
+#### Experiments 8-21: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -526,6 +528,8 @@ Historical comparison: Exp 8 original hard tasks 80% (4/5), Exp 12 baseline 80% 
 **Exp 19 — Concise Reasoning** (NEUTRAL): Added `concise_reasoning` flag that appends instruction to system prompt asking VLM to keep reasoning to 1-2 sentences without detailed grid descriptions. Both configs 100% success. Concise mode barely changed any metrics: steps 9.6→9.4 (-2%), output tokens 866→964 (+11%, opposite of expected), time 35.0s→35.5s (flat). The VLM was already reasonably concise — the extra instruction had negligible impact. Not merged.
 
 **Exp 20 — Action History Context** (NEUTRAL): Added `action_history_context` flag that injects a brief summary of all prior actions into the VLM task context (e.g., "Actions taken so far: 1. hotkey (OK), 2. type (OK)..."). Designed to help on long tasks where early actions get windowed out. Both configs 100% success, with modest improvements: steps 10.6→10.0 (-6%), tokens 964K→884K (-8%), time 38.1s→36.9s (-3%). The gains are within normal run-to-run variance. Not merged.
+
+**Exp 21 — Dual Screenshot (Before/After)** (NEUTRAL/NEGATIVE): Added `dual_screenshot` flag that sends the previous step's screenshot alongside the current one, so the VLM can visually compare what changed. Both configs 100% success. Steps 10.2→9.6 (-6%) but input tokens 910K→1,541K (**+69%**) and time 36.9→39.7s (+8%). The extra image doubles per-step token cost. The only notable per-task improvement was Wikipedia Article Scroll (17→14 steps, -18%), but the token overhead makes this a net negative for cost efficiency. Not merged.
 
 #### Improvements Merged to Main
 
