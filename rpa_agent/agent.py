@@ -92,7 +92,7 @@ class AgentConfig:
 
     # VLM image settings
     vlm_image_format: str = "jpeg"  # "png" or "jpeg" — format sent to VLM (jpeg is 76% smaller)
-    vlm_image_quality: int = 25  # JPEG quality for VLM images (1-100)
+    vlm_image_quality: int = 10  # JPEG quality for VLM images (1-100)
     vlm_max_edge: int = 1024  # Max long edge for VLM images (pixels, 1024 is optimal)
 
     # Conversation history
