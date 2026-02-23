@@ -1,0 +1,223 @@
+[
+  {
+    "task_name": "DuckDuckGo Search",
+    "category": "standard",
+    "outcome": "completed",
+    "step_count": 7,
+    "total_input_tokens": 491626,
+    "total_output_tokens": 557,
+    "wall_time_seconds": 24.9,
+    "per_step_input_tokens": [
+      66699,
+      66944,
+      74678,
+      67469,
+      71968,
+      72238,
+      71630
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "category": "standard",
+    "outcome": "completed",
+    "step_count": 8,
+    "total_input_tokens": 744180,
+    "total_output_tokens": 567,
+    "wall_time_seconds": 28.8,
+    "per_step_input_tokens": [
+      66756,
+      67090,
+      77946,
+      67323,
+      116315,
+      117650,
+      109295,
+      121805
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "category": "standard",
+    "outcome": "completed",
+    "step_count": 10,
+    "total_input_tokens": 752778,
+    "total_output_tokens": 1029,
+    "wall_time_seconds": 39.3,
+    "per_step_input_tokens": [
+      66919,
+      67004,
+      74801,
+      67203,
+      67510,
+      72173,
+      72263,
+      69405,
+      104371,
+      91129
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "category": "standard",
+    "outcome": "completed",
+    "step_count": 11,
+    "total_input_tokens": 839885,
+    "total_output_tokens": 953,
+    "wall_time_seconds": 41.3,
+    "per_step_input_tokens": [
+      66758,
+      67093,
+      74854,
+      67355,
+      67478,
+      72145,
+      72274,
+      71388,
+      103845,
+      103895,
+      72800
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "category": "standard",
+    "outcome": "completed",
+    "step_count": 19,
+    "total_input_tokens": 2116295,
+    "total_output_tokens": 1747,
+    "wall_time_seconds": 72.0,
+    "per_step_input_tokens": [
+      66679,
+      66969,
+      78020,
+      67241,
+      116414,
+      117648,
+      117911,
+      109921,
+      118110,
+      114494,
+      122755,
+      130709,
+      118168,
+      114486,
+      134660,
+      131908,
+      131939,
+      128930,
+      129333
+    ]
+  },
+  {
+    "task_name": "Wikipedia + Back Nav",
+    "category": "hard",
+    "outcome": "completed",
+    "step_count": 10,
+    "total_input_tokens": 987818,
+    "total_output_tokens": 810,
+    "wall_time_seconds": 35.3,
+    "per_step_input_tokens": [
+      66730,
+      66973,
+      78060,
+      67103,
+      116521,
+      117768,
+      117916,
+      120899,
+      118004,
+      117844
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Image Search",
+    "category": "hard",
+    "outcome": "completed",
+    "step_count": 9,
+    "total_input_tokens": 698678,
+    "total_output_tokens": 711,
+    "wall_time_seconds": 37.1,
+    "per_step_input_tokens": [
+      66870,
+      67065,
+      74709,
+      67410,
+      71961,
+      72100,
+      69111,
+      97959,
+      111493
+    ]
+  },
+  {
+    "task_name": "Multi-Tab Workflow",
+    "category": "hard",
+    "outcome": "completed",
+    "step_count": 17,
+    "total_input_tokens": 1464025,
+    "total_output_tokens": 1698,
+    "wall_time_seconds": 60.6,
+    "per_step_input_tokens": [
+      66926,
+      66995,
+      74998,
+      67529,
+      72143,
+      72391,
+      71411,
+      93861,
+      75804,
+      75485,
+      82050,
+      75851,
+      116615,
+      117869,
+      117873,
+      122239,
+      93985
+    ]
+  },
+  {
+    "task_name": "Form Interaction",
+    "category": "hard",
+    "outcome": "completed",
+    "step_count": 9,
+    "total_input_tokens": 664255,
+    "total_output_tokens": 863,
+    "wall_time_seconds": 32.0,
+    "per_step_input_tokens": [
+      66860,
+      67058,
+      74580,
+      67315,
+      72096,
+      72223,
+      71170,
+      84808,
+      88145
+    ]
+  },
+  {
+    "task_name": "Deep Scroll + Find",
+    "category": "hard",
+    "outcome": "completed",
+    "step_count": 11,
+    "total_input_tokens": 1120484,
+    "total_output_tokens": 924,
+    "wall_time_seconds": 38.3,
+    "per_step_input_tokens": [
+      66770,
+      67104,
+      77869,
+      67334,
+      116326,
+      117661,
+      117780,
+      123026,
+      122130,
+      122133,
+      122351
+    ]
+  }
+]
