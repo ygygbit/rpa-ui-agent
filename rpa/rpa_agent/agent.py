@@ -934,6 +934,20 @@ class GUIAgent:
                 "TIP: After typing a search query, press Enter to submit rather than clicking the search button."
             )
 
+        # URL navigation: press Enter right after typing (skip Escape for autocomplete)
+        if any(kw in task_lower for kw in ["go to", "navigate to", "open", "visit"]):
+            hints.append(
+                "TIP: After typing a URL in the address bar, press Enter immediately to navigate. "
+                "Do NOT press Escape first — the autocomplete dropdown will be dismissed automatically when you press Enter."
+            )
+
+        # Wikipedia/article with table of contents
+        if "wikipedia" in task_lower and any(kw in task_lower for kw in ["section", "find", "scroll"]):
+            hints.append(
+                "TIP: Wikipedia articles have a Table of Contents near the top. You can click a section link "
+                "in the ToC to jump directly to that section instead of scrolling."
+            )
+
         return "\n".join(hints) if hints else ""
 
     def _validate_coordinates(self, action: AnyAction, screen_info: Dict[str, int]) -> Optional[str]:
