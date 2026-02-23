@@ -672,7 +672,7 @@ class GUIAgent:
         if atype in (ActionType.CLICK, ActionType.DOUBLE_CLICK):
             return True
         # Enter key press (form submit, address bar navigate)
-        if atype == ActionType.KEY and hasattr(action, 'key'):
+        if atype == ActionType.PRESS_KEY and hasattr(action, 'key'):
             if action.key and action.key.lower() in ('enter', 'return'):
                 return True
         # Hotkey with Enter (e.g., Ctrl+Enter, or just Enter mapped as hotkey)
