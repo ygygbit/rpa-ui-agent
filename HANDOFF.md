@@ -412,6 +412,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 16 | `exp/smart-wait` | Smart wait after navigation actions | **MODERATE POSITIVE** | **-13% steps, -18% tokens**, merged |
 | 17 | `exp/cumulative-validation` | All improvements on 10 tasks | **100% (10/10)** | All improvements stack, no interference |
 | 18 | `exp/step-budget-awareness` | Step budget awareness for VLM | **MODERATE POSITIVE** | **-18% steps, -22% tokens, -21% time**, merged |
+| 19 | `exp/concise-reasoning` | Concise reasoning mode | **NEUTRAL** | No meaningful change, VLM already concise |
 
 #### Detailed Experiment Findings
 
@@ -460,8 +461,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/smart-wait` | `22aab8f` | Complete (Exp 16, moderate positive, merged) |
 | `exp/cumulative-validation` | `79a54f1` | Complete (Exp 17, 100% on 10 tasks) |
 | `exp/step-budget-awareness` | `ab934d6` | Complete (Exp 18, moderate positive, merged) |
+| `exp/concise-reasoning` | `26be4d3` | Complete (Exp 19, neutral) |
 
-#### Experiments 8-18: Hard Tasks, Robustness, and Validation
+#### Experiments 8-19: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -518,6 +520,8 @@ Historical comparison: Exp 8 original hard tasks 80% (4/5), Exp 12 baseline 80% 
 |--------|---------|-----------|------------|----------|
 | baseline | 100% (5/5) | 11.4 | 1,049,804 | 42.5s |
 | **budget** | **100% (5/5)** | **9.4** | **817,022** | **33.5s** |
+
+**Exp 19 — Concise Reasoning** (NEUTRAL): Added `concise_reasoning` flag that appends instruction to system prompt asking VLM to keep reasoning to 1-2 sentences without detailed grid descriptions. Both configs 100% success. Concise mode barely changed any metrics: steps 9.6→9.4 (-2%), output tokens 866→964 (+11%, opposite of expected), time 35.0s→35.5s (flat). The VLM was already reasonably concise — the extra instruction had negligible impact. Not merged.
 
 #### Improvements Merged to Main
 
