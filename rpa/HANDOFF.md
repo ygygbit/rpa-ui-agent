@@ -105,7 +105,7 @@ config = AgentConfig(
     step_delay=0.5,
     max_history_turns=10,       # Sliding window (Session 9)
     vlm_image_format="jpeg",    # JPEG instead of PNG (Exp 5)
-    vlm_image_quality=50,       # q50 sufficient for VLM (Exp 36, was q75)
+    vlm_image_quality=25,       # q25 sufficient for VLM (Exp 37, was q75→q50→q25)
     vlm_max_edge=1024,          # 1024px instead of 1344px (Exp 5)
     coordinate_validation="relaxed",  # Relaxed y<100 threshold (Exp 12)
     action_feedback=True,       # Confirm successful actions to VLM (Exp 15)
@@ -140,7 +140,7 @@ This is the most important subsystem and the one that received the most iteratio
 
 **Why pre-resize**: Anthropic's API internally resizes images > 1568px. If we sent a 1920px image with grid labels at pixel positions, the API downscales it but the labels still say "1920" while the VLM sees a ~1200px image. Grid label positions no longer match visual positions, causing ~30% systematic offset. By pre-resizing to 1344px (or 1024px), we guarantee no further API resizing occurs.
 
-**JPEG vs PNG**: JPEG q50 at 1024px reduces base64 image size by ~85%, cutting per-step input tokens from ~575K to ~67K. VLM accuracy is unaffected — coordinate grid labels remain readable at this quality level. (Exp 36 showed q50 saves 34% more tokens per step vs q75, with no accuracy loss.)
+**JPEG vs PNG**: JPEG q25 at 1024px reduces base64 image size by ~90%+, cutting per-step input tokens from ~575K to ~47K. VLM accuracy is unaffected — coordinate grid labels remain readable even at q25. (Quality progression: Exp 5 established JPEG, Exp 36 dropped q75→q50 saving 34%/step, Exp 37 dropped q50→q25 saving another 38%/step.)
 
 ### VLM Configuration
 
@@ -431,6 +431,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 34 | `exp/defaults-update` | Default config update (flags=True) | **POSITIVE** | 6.4 avg steps with plain AgentConfig(), merged |
 | 35 | `exp/reduced-resolution` | 768px max edge (vs 1024px) | **NEGATIVE** | avg 5.4→14.0 steps (+159%), not merged |
 | 36 | `exp/jpeg-quality` | JPEG quality q50 (vs q75) | **STRONG POSITIVE** | -34% tokens/step, -23% steps, same 100%, merged |
+| 37 | `exp/jpeg-quality-25` | JPEG quality q25 (vs q50) | **STRONG POSITIVE** | -38% tokens/step, -49% steps, same 100%, merged |
 
 #### Detailed Experiment Findings
 
@@ -497,6 +498,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/defaults-update` | `c356a85` | Complete (Exp 34, defaults to True, **merged to main**) |
 | `exp/reduced-resolution` | `cc6a11e` | Complete (Exp 35, negative, not merged) |
 | `exp/jpeg-quality` | `01b4d9a` | Complete (Exp 36, strong positive, **merged to main**) |
+| `exp/jpeg-quality-25` | `71e356c` | Complete (Exp 37, strong positive, **merged to main**) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -670,6 +672,22 @@ Per-task comparison:
 | DuckDuckGo Click Result | 5 | 7 | +2 | -23% |
 | Wikipedia Article Scroll | 12 | 6 | -6 | -32% |
 
+**Exp 37 — JPEG Quality Floor (q25 vs q50)** (STRONG POSITIVE): Pushed JPEG quality further from 50 to 25. Both configs 100% success. q25 achieved **-38% tokens per step** (75K→47K), with avg steps 10.6→5.4 (the raw step count gap is partially VLM variability — q50 had a bad Wikipedia Search run at 21 steps). Per-step token savings were consistent at -30% to -38% across all tasks. Grid labels and UI elements remain identifiable at q25 despite visible blocking artifacts. Combined with Exp 36 (q75→q50), the total JPEG quality journey from q75 to q25 saves ~54% tokens per step. Changed default from 50 to 25. Merged to main.
+
+| Config | Success | Avg Steps | Avg Tokens/Step | Avg Time |
+|--------|---------|-----------|-----------------|----------|
+| q50 | 100% (5/5) | 10.6 | 75,301 | 49.0s |
+| **q25** | **100% (5/5)** | **5.4** | **46,540** | **24.9s** |
+
+Per-task comparison:
+| Task | q50 Steps | q25 Steps | Delta | Tok/Step Delta |
+|------|-----------|-----------|-------|----------------|
+| DuckDuckGo Search | 4 | 4 | 0 | -30% |
+| Wikipedia Search | 21 | 4 | -17 | -37% |
+| Multi-Step Navigation | 6 | 5 | -1 | -30% |
+| DuckDuckGo Click Result | 9 | 5 | -4 | -38% |
+| Wikipedia Article Scroll | 13 | 9 | -4 | -34% |
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -686,6 +704,7 @@ Per-task comparison:
 | Auto-navigate + task rewrite (default=False) | Exp 32 | `5a915a6` via merge |
 | Defaults: adaptive_prompt=True, auto_navigate=True | Exp 34 | `c356a85` via merge |
 | JPEG quality reduced from q75 to q50 (default=50) | Exp 36 | `01b4d9a` via merge |
+| JPEG quality reduced from q50 to q25 (default=25) | Exp 37 | `71e356c` via merge |
 
 ---
 
