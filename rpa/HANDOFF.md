@@ -421,6 +421,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 25 | `exp/scroll-multiplier` | Double scroll distance (2x) | **NEUTRAL** | Same avg steps, no meaningful change |
 | 26 | `exp/early-done-detection` | Early done nudge on success reasoning | **MIXED** | Target case -20% steps, but 21 false-positive nudges |
 | 27 | `exp/smart-coord-retry` | Auto-scroll on out-of-bounds Y coords | **NEUTRAL** | Feature never triggered; 0 coord rejections in all runs |
+| 28 | `exp/vlm-planning` | VLM generates plan before executing | **MIXED-POSITIVE** | Wikipedia Scroll -20% steps, but plan overhead on simple tasks |
 
 #### Detailed Experiment Findings
 
@@ -478,8 +479,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/scroll-multiplier` | `5bfc6dd` | Complete (Exp 25, neutral) |
 | `exp/early-done-detection` | `0e95b9c` | Complete (Exp 26, mixed, not merged) |
 | `exp/smart-coord-retry` | `b151188` | Complete (Exp 27, neutral, not merged) |
+| `exp/vlm-planning` | `3251463` | Complete (Exp 28, mixed-positive, not merged) |
 
-#### Experiments 8-27: Hard Tasks, Robustness, and Validation
+#### Experiments 8-28: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -564,6 +566,13 @@ Historical comparison: Exp 8 original hard tasks 80% (4/5), Exp 12 baseline 80% 
 |--------|---------|-----------|-----------------|----------|
 | baseline | 100% (5/5) | 9.8 | 853,545 | 36.4s |
 | smart-retry | 100% (5/5) | 11.4 | 1,058,314 | 43.0s |
+
+**Exp 28 — VLM Planning Phase** (MIXED-POSITIVE): Added `vlm_planning` flag that makes an extra VLM call before execution to generate a high-level plan (3-6 numbered steps). The plan is injected into all subsequent VLM calls as context. Both configs 100% success. Wikipedia Article Scroll improved significantly (15→12 steps, -20%) — the plan helped the VLM be more deliberate about finding the History section. Simple tasks got slightly worse due to plan overhead (~67K tokens per plan call). Average action steps: baseline 10.0 vs planning 9.2 (but +1 plan step = 10.2 total). The VLM initially tried to output action JSON in the plan response — needed explicit "Do NOT output any JSON" instruction. Net effect roughly neutral when counting plan overhead. Not merged.
+
+| Config | Success | Avg Steps | Avg Input Tokens | Avg Time |
+|--------|---------|-----------|-----------------|----------|
+| baseline | 100% (5/5) | 10.0 | 882,005 | 38.3s |
+| planning | 100% (5/5) | 10.2 (9.2 action) | 846,111 | 37.0s |
 
 #### Improvements Merged to Main
 
