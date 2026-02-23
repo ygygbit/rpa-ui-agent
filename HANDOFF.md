@@ -112,6 +112,7 @@ config = AgentConfig(
     smart_wait=True,            # Extra delay after navigation actions (Exp 16)
     smart_wait_delay=1.5,       # 1.5s wait for page loads (Exp 16)
     step_budget_awareness=True, # Tell VLM step count/remaining (Exp 18)
+    adaptive_prompt=True,       # Task-specific strategy hints (Exp 29)
 )
 # Use build_enhanced_prompt() from test_exp7_combined.py for Ctrl+L nav hints (Exp 6)
 ```
@@ -481,7 +482,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/early-done-detection` | `0e95b9c` | Complete (Exp 26, mixed, not merged) |
 | `exp/smart-coord-retry` | `b151188` | Complete (Exp 27, neutral, not merged) |
 | `exp/vlm-planning` | `3251463` | Complete (Exp 28, mixed-positive, not merged) |
-| `exp/adaptive-prompt` | `f9b26de` | Complete (Exp 29, positive, merge candidate) |
+| `exp/adaptive-prompt` | `f9b26de` | Complete (Exp 29, positive, **merged to main**) |
 
 #### Experiments 8-29: Hard Tasks, Robustness, and Validation
 
@@ -603,6 +604,7 @@ Per-task step delta with adaptive prompt:
 | Action confirmation feedback (default=True) | Exp 15 | `2a4f5c2` |
 | Smart wait after navigation (default=True) | Exp 16 | `29d028f` |
 | Step budget awareness (default=True) | Exp 18 | `7e692e5` |
+| Adaptive prompt hints (default=False) | Exp 29 | `a30d7da` via merge |
 
 ---
 
