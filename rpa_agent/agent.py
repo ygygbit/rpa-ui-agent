@@ -108,6 +108,9 @@ class AgentConfig:
     smart_wait: bool = True
     smart_wait_delay: float = 1.5  # Extra seconds to wait after navigation actions
 
+    # Step budget awareness: tell VLM how many steps used/remaining
+    step_budget_awareness: bool = False
+
     # Safety settings
     confirm_actions: bool = False  # Ask before executing
     dry_run: bool = False  # Don't actually execute actions
@@ -1107,9 +1110,19 @@ class GUIAgent:
                 else:
                     history_to_send = self._conversation_history
 
+                # Build task string with optional step budget awareness
+                task_for_vlm = task
+                if self.config.step_budget_awareness:
+                    remaining = self.config.max_steps - step_number
+                    task_for_vlm = f"{task}\n\n[Step {step_number}/{self.config.max_steps} — {remaining} steps remaining]"
+                    if remaining <= 3:
+                        task_for_vlm += " URGENT: Very few steps left. Complete the task NOW or report done/fail."
+                    elif remaining <= self.config.max_steps // 3:
+                        task_for_vlm += " Be efficient — limited steps remaining."
+
                 vlm_response = self.vlm.analyze_screenshot(
                     screenshot=screenshot_data,
-                    task=task,
+                    task=task_for_vlm,
                     screen_info=screen_info,
                     history=history_to_send if history_to_send else None,
                     system_prompt=self._system_prompt
