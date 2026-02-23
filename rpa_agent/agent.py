@@ -105,7 +105,7 @@ class AgentConfig:
     action_feedback: bool = True
 
     # Smart wait: add extra delay after navigation-likely actions (clicks, Enter key)
-    smart_wait: bool = False
+    smart_wait: bool = True
     smart_wait_delay: float = 1.5  # Extra seconds to wait after navigation actions
 
     # Safety settings
