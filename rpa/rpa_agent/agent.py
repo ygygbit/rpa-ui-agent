@@ -652,6 +652,10 @@ class GUIAgent:
             parts.append(f"key={action.key}")
         if hasattr(action, 'keys') and isinstance(action.keys, list):
             parts.append(f"keys={'+'.join(action.keys)}")
+        if hasattr(action, 'direction'):
+            parts.append(f"dir={action.direction}")
+        if hasattr(action, 'amount'):
+            parts.append(f"amt={action.amount}")
         return "|".join(parts)
 
     def _check_stuck_loop(self, action: AnyAction) -> Tuple[Optional[str], str]:
@@ -680,6 +684,12 @@ class GUIAgent:
             else:
                 break
 
+        # Scroll actions are inherently repeatable — allow up to 6 consecutive
+        # scrolls before triggering stuck detection (vs 3 for other actions)
+        is_scroll = isinstance(action, ScrollAction)
+        block_threshold = 6 if is_scroll else 3
+        override_threshold = 8 if is_scroll else 5
+
         # Smart override: if agent typed text recently and is now stuck clicking,
         # override earlier (at 3 repeats instead of 5) with Enter key
         if consecutive_count >= 3 and self._should_submit_after_type(action):
@@ -690,8 +700,8 @@ class GUIAgent:
                 "override"
             )
 
-        # 5+ identical: force override with keyboard fallback
-        if consecutive_count >= 5:
+        # 5+ identical (8+ for scroll): force override with keyboard fallback
+        if consecutive_count >= override_threshold:
             return (
                 "CRITICAL: You have repeated the EXACT SAME action 5+ times. "
                 "The system is now OVERRIDING your action with a keyboard shortcut. "
@@ -699,8 +709,8 @@ class GUIAgent:
                 "override"
             )
 
-        # 3-4 identical: block and force re-query
-        if consecutive_count >= 3:
+        # 3-4 identical (6-7 for scroll): block and force re-query
+        if consecutive_count >= block_threshold:
             return (
                 "BLOCKED: You have repeated the EXACT SAME action 3+ times in a row. "
                 "Your action was NOT executed. The screen has NOT changed. "
