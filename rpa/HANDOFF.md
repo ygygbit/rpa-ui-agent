@@ -424,6 +424,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 27 | `exp/smart-coord-retry` | Auto-scroll on out-of-bounds Y coords | **NEUTRAL** | Feature never triggered; 0 coord rejections in all runs |
 | 28 | `exp/vlm-planning` | VLM generates plan before executing | **MIXED-POSITIVE** | Wikipedia Scroll -20% steps, but plan overhead on simple tasks |
 | 29 | `exp/adaptive-prompt` | Task-specific strategy hints (Ctrl+F, Enter) | **POSITIVE** | Wikipedia Scroll -35% steps (20→13), avg -12% steps, -16% tokens |
+| 30 | `exp/expanded-adaptive-hints` | Expanded hints: URL nav + Wiki ToC | **STRONG POSITIVE** | Avg 10.0→7.2 steps (-28%), all 5/5 success |
 
 #### Detailed Experiment Findings
 
@@ -483,8 +484,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/smart-coord-retry` | `b151188` | Complete (Exp 27, neutral, not merged) |
 | `exp/vlm-planning` | `3251463` | Complete (Exp 28, mixed-positive, not merged) |
 | `exp/adaptive-prompt` | `f9b26de` | Complete (Exp 29, positive, **merged to main**) |
+| `exp/expanded-adaptive-hints` | `2510e45` | Complete (Exp 30, strong positive, **merged to main**) |
 
-#### Experiments 8-29: Hard Tasks, Robustness, and Validation
+#### Experiments 8-30: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -593,6 +595,17 @@ Per-task step delta with adaptive prompt:
 | DuckDuckGo Click Result | 10 | 11 | +1 | none |
 | Wikipedia Article Scroll | 20 | 13 | **-7** | Ctrl+F hint |
 
+**Exp 30 — Expanded Adaptive Hints** (STRONG POSITIVE): Extended the adaptive hint system from 3 to 5 categories by adding: (1) URL navigation hint ("Press Enter immediately after typing URL, do NOT press Escape first"), (2) Wikipedia ToC hint ("Click Table of Contents links to jump to sections"). Compared against Exp 29 adaptive results. All 5 tasks completed. The URL navigation hint was the biggest win — it eliminated the Escape step that the VLM previously used to dismiss Chrome autocomplete before pressing Enter, saving 2-4 steps per task across the board. Average steps: 10.0 → 7.2 (**-28%**). Merged to main.
+
+| Task | Exp 29 Steps | Expanded Steps | Delta |
+|------|-------------|----------------|-------|
+| DuckDuckGo Search | 8 | **5** | **-3** |
+| Wikipedia Search | 9 | **7** | **-2** |
+| Multi-Step Navigation | 9 | **7** | **-2** |
+| DuckDuckGo Click Result | 11 | **7** | **-4** |
+| Wikipedia Article Scroll | 13 | **10** | **-3** |
+| **Average** | **10.0** | **7.2** | **-2.8 (-28%)** |
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -605,6 +618,7 @@ Per-task step delta with adaptive prompt:
 | Smart wait after navigation (default=True) | Exp 16 | `29d028f` |
 | Step budget awareness (default=True) | Exp 18 | `7e692e5` |
 | Adaptive prompt hints (default=False) | Exp 29 | `a30d7da` via merge |
+| Expanded adaptive hints (URL nav, Wiki ToC) | Exp 30 | `2510e45` via merge |
 
 ---
 
