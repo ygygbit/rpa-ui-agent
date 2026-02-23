@@ -104,6 +104,10 @@ class AgentConfig:
     # Action feedback: inject confirmation message after successful actions
     action_feedback: bool = True
 
+    # Smart wait: add extra delay after navigation-likely actions (clicks, Enter key)
+    smart_wait: bool = False
+    smart_wait_delay: float = 1.5  # Extra seconds to wait after navigation actions
+
     # Safety settings
     confirm_actions: bool = False  # Ask before executing
     dry_run: bool = False  # Don't actually execute actions
@@ -660,6 +664,22 @@ class GUIAgent:
         if hasattr(action, 'direction') and action.direction:
             parts.append(f"Scrolled {action.direction}.")
         return " ".join(parts)
+
+    def _is_navigation_action(self, action: AnyAction) -> bool:
+        """Check if an action is likely to trigger a page load/navigation."""
+        atype = action.action_type
+        # Click actions on links often navigate
+        if atype in (ActionType.CLICK, ActionType.DOUBLE_CLICK):
+            return True
+        # Enter key press (form submit, address bar navigate)
+        if atype == ActionType.PRESS_KEY and hasattr(action, 'key'):
+            if action.key and action.key.lower() in ('enter', 'return'):
+                return True
+        # Hotkey with Enter (e.g., Ctrl+Enter, or just Enter mapped as hotkey)
+        if atype == ActionType.HOTKEY and hasattr(action, 'keys'):
+            if action.keys and any(k.lower() in ('enter', 'return') for k in action.keys):
+                return True
+        return False
 
     def _action_signature(self, action: AnyAction) -> str:
         """Create a string signature of an action for comparison."""
@@ -1264,7 +1284,12 @@ class GUIAgent:
 
                 # 8. Delay before next step
                 if self.state == AgentState.RUNNING:
-                    time.sleep(self.config.step_delay)
+                    if (self.config.smart_wait and result.success
+                            and self._is_navigation_action(action)):
+                        self.console.print(f"[dim]Smart wait: {self.config.smart_wait_delay}s for page load[/]")
+                        time.sleep(self.config.smart_wait_delay)
+                    else:
+                        time.sleep(self.config.step_delay)
 
             except Exception as e:
                 self.console.print(f"[red]Error in step {step_number}: {e}[/]")
