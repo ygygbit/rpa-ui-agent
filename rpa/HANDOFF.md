@@ -418,6 +418,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 22 | `exp/temperature-zero` | Temperature 0.0 vs 0.1 | **NEUTRAL** | +8% steps with temp=0, current 0.1 is good |
 | 23 | `exp/keyboard-first` | Keyboard-first navigation prompt | **NEUTRAL** | +6% steps, VLM already uses shortcuts appropriately |
 | 24 | `exp/adaptive-delay` | Adaptive step delays (0.2/2.5) | **NEUTRAL/NEGATIVE** | +10% time, current 0.5/1.5 well-tuned |
+| 25 | `exp/scroll-multiplier` | Double scroll distance (2x) | **NEUTRAL** | Same avg steps, no meaningful change |
 
 #### Detailed Experiment Findings
 
@@ -472,8 +473,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/temperature-zero` | `60553c3` | Complete (Exp 22, neutral) |
 | `exp/keyboard-first` | `600a5f2` | Complete (Exp 23, neutral) |
 | `exp/adaptive-delay` | `3856928` | Complete (Exp 24, neutral/negative) |
+| `exp/scroll-multiplier` | `5bfc6dd` | Complete (Exp 25, neutral) |
 
-#### Experiments 8-24: Hard Tasks, Robustness, and Validation
+#### Experiments 8-25: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -542,6 +544,8 @@ Historical comparison: Exp 8 original hard tasks 80% (4/5), Exp 12 baseline 80% 
 **Exp 23 — Keyboard-First Navigation** (NEUTRAL): Added `keyboard_first` flag that appends a keyboard-first strategy section to the system prompt encouraging Ctrl+F, Enter, Tab, Space over clicking. Both configs 100% success. Keyboard-first was slightly worse: 10.8 avg steps vs 10.2 (+6%), tokens 977K vs 902K (+8%). Wikipedia Article Scroll regressed (17→19 steps). The VLM already uses keyboard shortcuts appropriately (Ctrl+L, Enter after typing) and forcing more keyboard use adds overhead without benefit. Not merged.
 
 **Exp 24 — Adaptive Step Delay** (NEUTRAL/NEGATIVE): Tested reduced base delay (0.2s vs 0.5s) with increased smart_wait (2.5s vs 1.5s). Both configs 100% success but adaptive was +10% slower: 38.6s vs 35.0s. The larger smart_wait_delay added too much overhead on navigation-heavy tasks (DuckDuckGo Click Result: 34.8→45.4s). The reduced base delay couldn't compensate. Current 0.5/1.5 timing is well-tuned. Not merged.
+
+**Exp 25 — Scroll Multiplier** (NEUTRAL): Added `scroll_multiplier` config to amplify scroll distances (2x). Both configs 100% success with identical avg step count (10.2). Wikipedia Article Scroll didn't improve (17→18 steps). Doubling scroll distance doesn't help because the VLM adjusts its scroll count based on what it sees, not a fixed pattern. Not merged.
 
 #### Improvements Merged to Main
 
