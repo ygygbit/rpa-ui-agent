@@ -401,6 +401,8 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 10 | `exp/scroll-fix-maxsteps` | Scroll fix + max_steps=35 | **MIXED** | 60% hard tasks, scroll fix merged |
 | 11 | `exp/window-size` | Sliding window 5 vs 10 vs 20 | **NEUTRAL** | Images dominate token cost |
 | 12 | `exp/coordinate-validation` | Coord validation strict/relaxed/off | **POSITIVE** | relaxed 100% vs strict 80%, merged |
+| 13 | `exp/per-phase-retry` | Per-phase retry for screenshot/VLM | **NEUTRAL** | 100% both, no transient errors in lab |
+| 14 | `exp/screen-change-detection` | Screen change detection after actions | **NEUTRAL/NEGATIVE** | 34 false positives, +22% overhead |
 
 #### Detailed Experiment Findings
 
@@ -443,8 +445,10 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/scroll-fix-maxsteps` | `f8b6771` | Complete (Exp 10, scroll fix merged to main) |
 | `exp/window-size` | `a881ee3` | Complete (Exp 11, neutral) |
 | `exp/coordinate-validation` | `af8624b` | Complete (Exp 12, relaxed validation merged) |
+| `exp/per-phase-retry` | `742aa81` | Complete (Exp 13, neutral) |
+| `exp/screen-change-detection` | `05d6f5a` | Complete (Exp 14, neutral/negative) |
 
-#### Experiments 8-12: Hard Tasks and Robustness
+#### Experiments 8-14: Hard Tasks, Robustness, and Error Recovery
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -461,6 +465,15 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | strict | 80% (4/5) | 13.6 | 5 |
 | relaxed | **100% (5/5)** | 13.8 | **0** |
 | off | 100% (5/5) | 13.6 | 0 |
+
+**Exp 13 — Per-Phase Retry** (NEUTRAL): Added configurable `phase_retries` that wraps screenshot capture and VLM API calls with independent retry loops. Tested `phase_retries=0` (baseline) vs `phase_retries=3` on 5 tasks. Both achieved 100% success with 0 retries triggered — the sandbox lab environment is stable with no transient errors. The feature provides production reliability insurance but shows no benefit in controlled testing.
+
+**Exp 14 — Screen Change Detection** (NEUTRAL/NEGATIVE): Added `screen_change_detection` flag that captures pre/post action screenshots, compares them with numpy pixel diff (>0.5% threshold), and warns VLM when the screen didn't change. Result: same 80% success rate both configs, but detection config had **higher avg steps** (16.2 vs 15.0) and **+22% wall time** (65.9s vs 53.8s). 34 screen-change warnings triggered, many being false positives — the 0.3s wait after action execution is insufficient for page loads to render. The warnings confused the VLM rather than helping it. Not merged.
+
+| Config | Success | Avg Steps | Avg Tokens | Avg Time | Warnings |
+|--------|---------|-----------|------------|----------|----------|
+| baseline | 80% (4/5) | 15.0 | 1,208,973 | 53.8s | 0 |
+| screen_change | 80% (4/5) | 16.2 | 1,322,193 | 65.9s | 34 |
 
 #### Improvements Merged to Main
 
