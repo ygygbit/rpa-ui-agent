@@ -488,8 +488,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/step-aware-hints` | `ea02f62` | Complete (Exp 31, mixed, not merged) |
 | `exp/task-rewrite` | `5a915a6` | Complete (Exp 32, strong positive, **merged to main**) |
 | `exp/cumulative-validation-2` | `a6216b8` | Complete (Exp 33, 100% 10/10 validation) |
+| `exp/defaults-update` | `c356a85` | Complete (Exp 34, defaults to True, **merged to main**) |
 
-#### Experiments 8-33: Hard Tasks, Robustness, and Validation
+#### Experiments 8-34: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -641,6 +642,8 @@ Per-task step delta with adaptive prompt:
 
 Historical progress (standard tasks avg steps): Exp 17 (6 imp.) 11.0 -> Exp 18 (7) 9.4 -> Exp 30 (9) 7.2 -> **Exp 33 (10) 5.8**
 
+**Exp 34 — Default Config Update** (POSITIVE): Changed `adaptive_prompt` and `auto_navigate` defaults from `False` to `True` so new users get all optimizations out of the box. Validated: 100% (5/5), avg 6.4 steps with plain `AgentConfig()` — no explicit flag overrides needed. All 11 improvements are now active by default. Merged to main.
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -655,6 +658,7 @@ Historical progress (standard tasks avg steps): Exp 17 (6 imp.) 11.0 -> Exp 18 (
 | Adaptive prompt hints (default=False) | Exp 29 | `a30d7da` via merge |
 | Expanded adaptive hints (URL nav, Wiki ToC) | Exp 30 | `2510e45` via merge |
 | Auto-navigate + task rewrite (default=False) | Exp 32 | `5a915a6` via merge |
+| Defaults: adaptive_prompt=True, auto_navigate=True | Exp 34 | `c356a85` via merge |
 
 ---
 
