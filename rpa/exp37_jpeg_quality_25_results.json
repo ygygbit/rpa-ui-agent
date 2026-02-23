@@ -1,0 +1,202 @@
+[
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "q50",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 226826,
+    "total_output_tokens": 402,
+    "wall_time_seconds": 18.6,
+    "jpeg_quality": 50,
+    "per_step_input_tokens": [
+      51209,
+      51223,
+      49429,
+      74965
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "q50",
+    "outcome": "completed",
+    "step_count": 21,
+    "total_input_tokens": 1792809,
+    "total_output_tokens": 2750,
+    "wall_time_seconds": 96.5,
+    "jpeg_quality": 50,
+    "per_step_input_tokens": [
+      80491,
+      81491,
+      76356,
+      84788,
+      86963,
+      87315,
+      79419,
+      85433,
+      86458,
+      88460,
+      87539,
+      88940,
+      89121,
+      81128,
+      87264,
+      89051,
+      89450,
+      88671,
+      89361,
+      87620,
+      77490
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "q50",
+    "outcome": "completed",
+    "step_count": 6,
+    "total_input_tokens": 342361,
+    "total_output_tokens": 597,
+    "wall_time_seconds": 24.0,
+    "jpeg_quality": 50,
+    "per_step_input_tokens": [
+      51269,
+      51420,
+      51418,
+      49650,
+      73440,
+      65164
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "q50",
+    "outcome": "completed",
+    "step_count": 9,
+    "total_input_tokens": 546991,
+    "total_output_tokens": 2371,
+    "wall_time_seconds": 47.6,
+    "jpeg_quality": 50,
+    "per_step_input_tokens": [
+      51128,
+      51271,
+      51468,
+      49693,
+      71793,
+      71959,
+      72340,
+      73095,
+      54244
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "q50",
+    "outcome": "completed",
+    "step_count": 13,
+    "total_input_tokens": 1081945,
+    "total_output_tokens": 2182,
+    "wall_time_seconds": 58.2,
+    "jpeg_quality": 50,
+    "per_step_input_tokens": [
+      80796,
+      81726,
+      81824,
+      82056,
+      80438,
+      81259,
+      81498,
+      81480,
+      81823,
+      81396,
+      82253,
+      92551,
+      92845
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "q25",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 157679,
+    "total_output_tokens": 420,
+    "wall_time_seconds": 18.5,
+    "jpeg_quality": 25,
+    "per_step_input_tokens": [
+      35443,
+      35554,
+      35746,
+      50936
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "q25",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 216468,
+    "total_output_tokens": 891,
+    "wall_time_seconds": 19.9,
+    "jpeg_quality": 25,
+    "per_step_input_tokens": [
+      53624,
+      54686,
+      51605,
+      56553
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "q25",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 198544,
+    "total_output_tokens": 480,
+    "wall_time_seconds": 22.2,
+    "jpeg_quality": 25,
+    "per_step_input_tokens": [
+      35533,
+      35570,
+      34328,
+      48768,
+      44345
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "q25",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 189241,
+    "total_output_tokens": 543,
+    "wall_time_seconds": 23.0,
+    "jpeg_quality": 25,
+    "per_step_input_tokens": [
+      35378,
+      35541,
+      34441,
+      48061,
+      35820
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "q25",
+    "outcome": "completed",
+    "step_count": 9,
+    "total_input_tokens": 494659,
+    "total_output_tokens": 1644,
+    "wall_time_seconds": 41.1,
+    "jpeg_quality": 25,
+    "per_step_input_tokens": [
+      53801,
+      54805,
+      55001,
+      55338,
+      55098,
+      54478,
+      55023,
+      55426,
+      55689
+    ]
+  }
+]
