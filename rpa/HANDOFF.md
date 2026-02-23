@@ -431,6 +431,25 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/screenshot-optimization` | `6df99e8` | Complete (Exp 5, positive) |
 | `exp/navigation-hints` | `9ab0aff` | Complete (Exp 6, positive) |
 | `exp/combined-improvements` | `3cbbb27` | Complete (Exp 7, strong positive) |
+| `exp/harder-tasks` | `857cded` | Complete (Exp 8, 80% on hard tasks) |
+| `exp/task-decomposition` | `96b5d4d` | Complete (Exp 9, neutral) |
+| `exp/scroll-fix-maxsteps` | `f8b6771` | Complete (Exp 10, scroll fix merged to main) |
+
+#### Experiments 8-10: Hard Tasks and Robustness
+
+**Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
+
+**Exp 9 — Task Decomposition Hint** (NEUTRAL): Tested flat vs numbered sub-step task descriptions on 4 hard tasks. Same 75% success rate both ways. Decomposition fixed one failing task but broke another — it's task-dependent, not a general win. VLM follows rigid step plans too literally when tasks require visual search.
+
+**Exp 10 — Scroll Fix + Higher Max Steps** (60% on 5 hard tasks): Found and fixed a bug in stuck-loop detection where scroll actions were being blocked at 3 consecutive repeats. Added scroll direction/amount to action signature, raised scroll block threshold from 3 to 6. The scroll fix was merged to main. Higher max_steps (35 vs 25) was not beneficial — the agent wastes more time on unproductive attempts.
+
+#### Improvements Merged to Main
+
+| Change | Source | Commit |
+|--------|--------|--------|
+| JPEG q75 1024px defaults | Exp 5+7 | `24c32a4` via merge |
+| Ctrl+L nav prompt | Exp 6+7 | `f833242` |
+| Scroll-aware stuck detection | Exp 10 | `4d34b37` |
 
 ---
 
