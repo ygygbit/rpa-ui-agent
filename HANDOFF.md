@@ -416,6 +416,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 20 | `exp/action-history-context` | Action history in task context | **NEUTRAL** | -6% steps, -8% tokens, within variance |
 | 21 | `exp/dual-screenshot` | Before/after dual screenshot | **NEUTRAL/NEGATIVE** | -6% steps but +69% input tokens, +8% time |
 | 22 | `exp/temperature-zero` | Temperature 0.0 vs 0.1 | **NEUTRAL** | +8% steps with temp=0, current 0.1 is good |
+| 23 | `exp/keyboard-first` | Keyboard-first navigation prompt | **NEUTRAL** | +6% steps, VLM already uses shortcuts appropriately |
 
 #### Detailed Experiment Findings
 
@@ -468,8 +469,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/action-history-context` | `d2e0b7d` | Complete (Exp 20, neutral) |
 | `exp/dual-screenshot` | `5ed7364` | Complete (Exp 21, neutral/negative) |
 | `exp/temperature-zero` | `60553c3` | Complete (Exp 22, neutral) |
+| `exp/keyboard-first` | `600a5f2` | Complete (Exp 23, neutral) |
 
-#### Experiments 8-22: Hard Tasks, Robustness, and Validation
+#### Experiments 8-23: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -534,6 +536,8 @@ Historical comparison: Exp 8 original hard tasks 80% (4/5), Exp 12 baseline 80% 
 **Exp 21 — Dual Screenshot (Before/After)** (NEUTRAL/NEGATIVE): Added `dual_screenshot` flag that sends the previous step's screenshot alongside the current one, so the VLM can visually compare what changed. Both configs 100% success. Steps 10.2→9.6 (-6%) but input tokens 910K→1,541K (**+69%**) and time 36.9→39.7s (+8%). The extra image doubles per-step token cost. The only notable per-task improvement was Wikipedia Article Scroll (17→14 steps, -18%), but the token overhead makes this a net negative for cost efficiency. Not merged.
 
 **Exp 22 — Temperature Variation** (NEUTRAL): Compared temperature=0.1 (current default) vs temperature=0.0 (fully deterministic). Both configs 100% success. Temperature=0.0 was slightly worse: 10.8 avg steps vs 10.0 (+8%), input tokens 987K vs 884K (+12%). Wikipedia Article Scroll regressed notably (17→21 steps). The deterministic mode makes the agent less adaptive on longer tasks. Current temperature=0.1 is confirmed as the better setting. Not merged.
+
+**Exp 23 — Keyboard-First Navigation** (NEUTRAL): Added `keyboard_first` flag that appends a keyboard-first strategy section to the system prompt encouraging Ctrl+F, Enter, Tab, Space over clicking. Both configs 100% success. Keyboard-first was slightly worse: 10.8 avg steps vs 10.2 (+6%), tokens 977K vs 902K (+8%). Wikipedia Article Scroll regressed (17→19 steps). The VLM already uses keyboard shortcuts appropriately (Ctrl+L, Enter after typing) and forcing more keyboard use adds overhead without benefit. Not merged.
 
 #### Improvements Merged to Main
 
