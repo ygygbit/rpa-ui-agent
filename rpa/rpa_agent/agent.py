@@ -101,6 +101,9 @@ class AgentConfig:
     # Coordinate validation: "strict" (y<140), "relaxed" (y<100), "off" (bounds only)
     coordinate_validation: str = "relaxed"
 
+    # Action feedback: inject confirmation message after successful actions
+    action_feedback: bool = False
+
     # Safety settings
     confirm_actions: bool = False  # Ask before executing
     dry_run: bool = False  # Don't actually execute actions
@@ -641,6 +644,22 @@ class GUIAgent:
             return f"Action {result.action.action_type.value} executed successfully."
         else:
             return f"Action {result.action.action_type.value} failed: {result.error}"
+
+    def _build_success_feedback(self, action: AnyAction) -> str:
+        """Build a concise feedback message for a successful action."""
+        atype = action.action_type.value
+        parts = [f"Action '{atype}' executed successfully."]
+        if hasattr(action, 'x') and hasattr(action, 'y') and action.x is not None:
+            parts.append(f"Clicked at ({action.x}, {action.y}).")
+        if hasattr(action, 'text') and action.text:
+            parts.append(f"Typed: '{action.text[:50]}'.")
+        if hasattr(action, 'key') and action.key:
+            parts.append(f"Key: {action.key}.")
+        if hasattr(action, 'keys') and isinstance(action.keys, list):
+            parts.append(f"Keys: {'+'.join(action.keys)}.")
+        if hasattr(action, 'direction') and action.direction:
+            parts.append(f"Scrolled {action.direction}.")
+        return " ".join(parts)
 
     def _action_signature(self, action: AnyAction) -> str:
         """Create a string signature of an action for comparison."""
@@ -1227,6 +1246,13 @@ class GUIAgent:
                     self._conversation_history.append({
                         "role": "user",
                         "content": self._build_feedback_message(result)
+                    })
+                elif self.config.action_feedback and action.action_type not in (
+                    ActionType.DONE, ActionType.FAIL
+                ):
+                    self._conversation_history.append({
+                        "role": "user",
+                        "content": self._build_success_feedback(action)
                     })
 
                 # 7. Display and record step
