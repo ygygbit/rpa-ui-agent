@@ -85,13 +85,31 @@ Windows Host                          Docker Container (rpa-sandbox)
 
 ---
 
-## Current State (Session 8 - 2026-02-21)
+## Current State (Session 10 - 2026-02-23)
 
 ### Latest Working State
 
-The agent successfully completes real-world tasks:
-- **YouTube playlist test**: Opened YouTube, found Liked videos, played video — 7 steps, all successful
-- **DuckDuckGo search**: Navigates, types, searches correctly when coordinates are accurate
+The agent successfully completes real-world tasks with **optimized settings**:
+- **100% success rate** on DuckDuckGo search, Google search, multi-step search+scroll tasks
+- **Optimized config (recommended)**: JPEG q75, max_edge=1024, Ctrl+L navigation hints
+  - **-86% input tokens** vs baseline
+  - **-31% fewer steps** vs baseline
+  - **-45% wall time** vs baseline
+
+### Recommended Agent Configuration
+
+```python
+config = AgentConfig(
+    vlm_config=VLMConfig(base_url="...", model="claude-opus-4.6-fast"),
+    max_steps=20,
+    step_delay=0.5,
+    max_history_turns=10,       # Sliding window (Session 9)
+    vlm_image_format="jpeg",    # JPEG instead of PNG (Exp 5)
+    vlm_image_quality=75,       # q75 sufficient for VLM (Exp 5)
+    vlm_max_edge=1024,          # 1024px instead of 1344px (Exp 5)
+)
+# Use build_enhanced_prompt() from test_exp7_combined.py for Ctrl+L nav hints (Exp 6)
+```
 
 ### VLM Coordinate Pipeline (Critical to understand)
 
@@ -99,21 +117,24 @@ This is the most important subsystem and the one that received the most iteratio
 
 ```
 1. Capture 1920x1080 screenshot from sandbox
-2. Resize to 1344x756 (max_edge=1344, conservative limit below API's 1568px)
-   scale_factor = 1344/1920 = 0.7
-3. Draw coordinate grid on 1344x756 image:
+2. Resize to max_edge (default 1344, optimized 1024) maintaining aspect ratio
+   scale_factor = max_edge / max(1920, 1080)
+3. Draw coordinate grid on resized image:
    - Grid lines every 100 original-pixels
    - Labels show ORIGINAL coordinates (100, 200, 300, ...)
-   - Pixel positions = original_coord * (1344/1920)
+   - Pixel positions = original_coord * scale_factor
    - Major lines at 500px, crosshairs at intersections
-4. Send 1344x756 grid image to VLM
-5. VLM returns coordinates in ORIGINAL screen space (reads grid labels)
-6. Agent rescales: action.x *= (1920/1344) = 1.4286x
+4. Encode image (PNG default, JPEG q75 optimized — 76% smaller)
+5. Send to VLM with media_type="image/jpeg" or "image/png"
+6. VLM returns coordinates in ORIGINAL screen space (reads grid labels)
+7. Agent rescales: action.x *= (1/scale_factor)
    (This is the _vlm_scale_factor stored in agent)
-7. Execute action at rescaled coordinates
+8. Execute action at rescaled coordinates
 ```
 
-**Why pre-resize**: Anthropic's API internally resizes images > 1568px. If we sent a 1920px image with grid labels at pixel positions, the API downscales it but the labels still say "1920" while the VLM sees a ~1200px image. Grid label positions no longer match visual positions, causing ~30% systematic offset. By pre-resizing to 1344px, we guarantee no further API resizing occurs.
+**Why pre-resize**: Anthropic's API internally resizes images > 1568px. If we sent a 1920px image with grid labels at pixel positions, the API downscales it but the labels still say "1920" while the VLM sees a ~1200px image. Grid label positions no longer match visual positions, causing ~30% systematic offset. By pre-resizing to 1344px (or 1024px), we guarantee no further API resizing occurs.
+
+**JPEG vs PNG**: JPEG q75 at 1024px reduces base64 image size by ~76%, cutting per-step input tokens from ~575K to ~120K. VLM accuracy is unaffected — coordinate grid labels remain readable at this quality level.
 
 ### VLM Configuration
 
@@ -148,19 +169,86 @@ Multi-tier detection in `agent.py:_check_stuck_loop()`:
 - Web page elements (search, input, button, etc.) at y < 140 → rejected as browser chrome confusion
 - Any element with "search" in name at y < 100 → rejected as address bar misidentification
 
-### UI-TARS Research (Session 8)
+### UI-TARS-desktop Deep Analysis (Session 8-9)
 
-Analyzed ByteDance's UI-TARS project for comparison. Key differences:
+Comprehensive analysis of ByteDance's UI-TARS-desktop repo (28.1k stars, Apache 2.0, TypeScript monorepo). Dual project: **Agent TARS** (AI browser agent) + **UI-TARS Desktop** (desktop GUI agent).
 
-| Aspect | Our RPA Agent | UI-TARS |
-|--------|--------------|---------|
-| Resize | Max-edge 1344, simple ratio | Factor-28 divisible (`smart_resize()`), pixel count bounded |
-| VLM guidance | Grid overlay with labels | No overlay, native VLM grounding |
-| Coord space | VLM reads grid labels = original coords, then rescale | VLM outputs coords in resized space → normalize [0,1] → scale to original |
-| Model | Claude (general VLM + grid prompt) | Qwen2.5-VL (fine-tuned for grounding) |
-| Accuracy method | Grid lines + interpolation prompts | Model's trained spatial understanding |
+#### Architecture Comparison
 
-UI-TARS uses `smart_resize()` with IMAGE_FACTOR=28 (required by Qwen2.5-VL vision encoder). Our approach compensates for using a general-purpose VLM by adding an explicit coordinate grid.
+| Aspect | Our RPA Agent | UI-TARS-desktop |
+|--------|--------------|-----------------|
+| Language | Python | TypeScript (pnpm monorepo) |
+| Agent Loop | While-loop in `GUIAgent.run()` | While-loop with `async-retry` per phase |
+| State Machine | `AgentState` (5 states) | `StatusEnum` (7 states: INIT, RUNNING, PAUSE, END, CALL_USER, USER_STOPPED, ERROR) |
+| Input Method | XTEST via python-xlib | NutJS (desktop), Puppeteer (browser), ADB (mobile) |
+| VLM Model | Claude (general-purpose + grid overlay) | Qwen2.5-VL / UI-TARS (fine-tuned for grounding) |
+| Coordinate System | Grid overlay labels → rescale by 1.4286x | Normalized [0,1] via `/factors` → scale to screen |
+| Screenshot Resize | Max-edge 1344, simple ratio | `smart_resize()` with factor-28 divisibility (Qwen2.5-VL requirement) |
+| Conversation History | Full history sent each step | Sliding window: last 5 screenshots max |
+| Retry | Basic try/catch | `async-retry` per phase (screenshot, model, execute) |
+| Stuck Detection | Multi-tier (warn→block→override, ABAB, clustering) | Basic `MAX_LOOP_COUNT=100` |
+
+#### Key Design Patterns Worth Incorporating
+
+**1. Operator Abstraction** — Clean abstract base class:
+```
+Operator:
+  screenshot() → base64 image
+  execute(params) → perform action
+  static MANUAL.ACTION_SPACES → auto-generate prompt action list
+```
+Four implementations: NutJSOperator (desktop), BrowserOperator (Puppeteer), AdbOperator (mobile), BrowserbaseOperator (remote). Each defines its own action space as a static string.
+
+**2. Per-Phase Retry** — Each step has independent retry:
+- Screenshot capture: retries up to `MAX_SNAPSHOT_ERR_CNT=10`
+- VLM model invoke: retries ~3 times
+- Action execute: retries ~3 times
+A transient error in one phase doesn't fail the whole step.
+
+**3. Pause/Resume/Stop** — Via `AbortController.signal`:
+- `pause()`: sets PAUSE status, awaits a Promise
+- `resume()`: resolves the Promise, back to RUNNING
+- Signal checked at each loop iteration
+- Valuable for debugging: pause, inspect state, resume
+
+**4. Conversation History Sliding Window** — `MAX_IMAGE_LENGTH = 5`:
+- Only last N screenshots kept in conversation history
+- Reduces token cost as step count grows
+- Keeps VLM focused on recent state
+
+**5. DPI-Aware Screenshots** (NutJS):
+- Captures at native DPI via `screen.pixelDensity()`
+- Downscales by `scaleX/Y` before sending to VLM
+- Coordinate results divided by `deviceScaleFactor`
+
+**6. Clipboard Paste for Typing** (Windows):
+- NutJS uses `clipboard.setContent(text)` + `Ctrl+V` on Windows
+- Better Unicode support than character-by-character typing
+
+**7. UIHelper Visual Feedback** (BrowserOperator):
+- SoM-style clickable element highlighting: buttons=pink, links=purple, inputs=green
+- Click pulse indicators, drag gradient paths
+- Action info panel overlay
+- Could improve VLM accuracy if used on screenshots before sending
+
+**8. Action Space Auto-Generation**:
+- System prompt template: `"... {{action_spaces_holder}} ..."`
+- Replaced at runtime with `operator.MANUAL.ACTION_SPACES`
+- Keeps prompt in sync with available actions automatically
+
+#### What We Have That They Don't
+- Coordinate grid overlay (model-agnostic approach)
+- Multi-tier stuck-loop detection (warn→block→override, ABAB, clustering)
+- Coordinate validation (y<140 browser chrome detection)
+
+#### Recommended Improvements (Priority Order)
+1. **Conversation history sliding window** — Low effort, high impact on token cost/quality
+2. **Operator abstraction** — Medium effort, improves architecture & extensibility
+3. **Per-phase retry** — Low effort, improves reliability
+4. **Pause/Resume** — Medium effort, better debugging experience
+5. **SoM-style element highlighting** — High effort, potentially high VLM accuracy impact
+6. **Auto-generated action space in prompt** — Low effort after operator abstraction
+7. **Clipboard paste for Windows typing** — Only for non-sandbox use
 
 ---
 
@@ -275,11 +363,74 @@ scroll(amount) → _xtest.button_press(4/5) → _xtest.button_release(4/5)
 - Result: Completed in 7/7 steps
 - Steps: clicked YouTube tab → waited for load → clicked "Liked videos" → clicked video → done
 
-**UI-TARS Analysis**: Researched ByteDance's UI-TARS project coordinate handling.
+**UI-TARS Initial Analysis**: Researched ByteDance's UI-TARS project coordinate handling.
 - UI-TARS uses `smart_resize()` with factor-28 divisibility (Qwen2.5-VL requirement)
 - Normalizes coordinates to [0,1] as intermediate step: `coord / resized_dim * original_dim`
 - Does NOT use grid overlays — relies on fine-tuned VLM grounding ability
 - Our approach is more model-agnostic; theirs is tighter with purpose-built grounding model
+
+### Session 9 (2026-02-21) - UI-TARS-desktop Deep Dive
+
+**Deep analysis of UI-TARS-desktop monorepo** (github.com/bytedance/UI-TARS-desktop):
+- Analyzed all 4 operators (NutJS, Browser, ADB, Browserbase)
+- Analyzed SDK GUIAgent, Model, action-parser, shared types
+- Analyzed newer multimodal/gui-agent ToolCallEngine implementation
+- Identified 7 concrete design patterns to incorporate (see "UI-TARS-desktop Deep Analysis" section above)
+- Updated HANDOFF.md with comprehensive findings and priority-ordered improvement recommendations
+- Top 3 improvements: conversation history sliding window, operator abstraction, per-phase retry
+
+### Session 10 (2026-02-23) - UI-TARS A/B Experiments
+
+Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against baseline. Each experiment isolated a single variable with identical tasks, VLM, and sandbox state. All tests used 3 browser tasks (DuckDuckGo search, Google search, multi-step search+scroll).
+
+#### Experiment Results Summary
+
+| # | Branch | Experiment | Result | Key Metric |
+|---|--------|-----------|--------|------------|
+| 1 | `exp/thought-action-format` | Thought-Action prompt format | **NEUTRAL** | +22% steps, same success |
+| 2 | `exp/reflection-mechanism` | Reflection after each step | **NEGATIVE** | 67% vs 100% success rate |
+| 3 | `exp/clipboard-typing` | Clipboard paste (xclip+Ctrl+V) | **NEGATIVE** | 0% vs 100% success rate |
+| 4 | `exp/simplified-action-space` | Minimal action space (7 vs 15 actions) | **NEUTRAL** | Identical performance |
+| 5 | `exp/screenshot-optimization` | JPEG q75, max_edge=1024 | **POSITIVE** | **-76% tokens**, same success |
+| 6 | `exp/navigation-hints` | Ctrl+L address bar workflow | **POSITIVE** | **-24% steps, -27% time** |
+| 7 | `exp/combined-improvements` | JPEG + Ctrl+L combined | **STRONG POSITIVE** | **-86% tokens, -31% steps, -45% time** |
+
+#### Detailed Experiment Findings
+
+**Exp 1 — Thought-Action Prompt Format**: Added UI-TARS-style `Thought: ... Action: ...` format requiring VLM to reason before acting. Added 22% more steps (VLM occasionally emitted thought-only responses). No success rate impact. Not worth the overhead.
+
+**Exp 2 — Reflection Mechanism**: Injected "Reflection:" section asking VLM to evaluate last action's success. **Degraded success rate from 100% to 67%** — the VLM second-guessed correct actions and retried unnecessarily. Counter-productive with general-purpose Claude (may work with fine-tuned models).
+
+**Exp 3 — Clipboard Typing**: Used `xclip` + `Ctrl+V` paste instead of keystroke-by-keystroke typing. **Total failure (0% success)** — xclip/Ctrl+V doesn't reliably deliver text to Chrome address bar in Xvfb Docker environment. All tasks hit max_steps. Infrastructure limitation, not a conceptual flaw.
+
+**Exp 4 — Simplified Action Space**: Reduced from 15 to 7 action types (merged `press_key` into `hotkey`, removed `move_*`, `drag`, `right_click`, `double_click`). Identical success rate, step count, and timing. The VLM already only uses a small subset of actions for web tasks.
+
+**Exp 5 — Screenshot Optimization** (POSITIVE): JPEG q75 at 1024px max_edge vs PNG at 1344px. Per-step input tokens dropped from ~575K to ~120K (**-76%**). Success rate unchanged at 100%. JPEG q50 at 768px was too aggressive — VLM reported coordinates outside screen bounds due to image being too small for spatial reasoning.
+
+**Exp 6 — Ctrl+L Navigation Hints** (POSITIVE): Replaced generic "click address bar or use Ctrl+L" with strict "ALWAYS use Ctrl+L, NEVER click address bar" workflow. Eliminated the common failure where VLM clicks address bar without selecting existing text, causing appended URLs (`about:blankgoogle.com`). Saved 2-3 steps per URL navigation. **-24% steps, -27% wall time**.
+
+**Exp 7 — Combined Improvements** (STRONG POSITIVE): Stacked Exp 5 (JPEG) + Exp 6 (Ctrl+L). Effects are **multiplicative** — JPEG saves tokens per step, Ctrl+L saves steps.
+
+| Metric | Baseline | Combined | Delta |
+|--------|----------|----------|-------|
+| Success Rate | 100% | 100% | 0% |
+| Avg Steps | 10.7 | 7.3 | **-31%** |
+| Avg Input Tokens | 6,311,382 | 905,866 | **-86%** |
+| Avg Output Tokens | 3,449 | 2,453 | **-29%** |
+| Avg Wall Time (s) | 49.1 | 27.0 | **-45%** |
+
+#### Git Branches
+
+| Branch | Commit | Status |
+|--------|--------|--------|
+| `main` | `ececd1c` | Base (sliding window + operator abstraction) |
+| `exp/thought-action-format` | `4527fa1` | Complete (Exp 1, neutral) |
+| `exp/reflection-mechanism` | `a884da9` | Complete (Exp 2, negative) |
+| `exp/clipboard-typing` | `8c852a1` | Complete (Exp 3, negative) |
+| `exp/simplified-action-space` | `4fbbb99` | Complete (Exp 4, neutral) |
+| `exp/screenshot-optimization` | `6df99e8` | Complete (Exp 5, positive) |
+| `exp/navigation-hints` | `9ab0aff` | Complete (Exp 6, positive) |
+| `exp/combined-improvements` | `3cbbb27` | Complete (Exp 7, strong positive) |
 
 ---
 
@@ -453,31 +604,46 @@ python -m rpa_agent.cli sandbox down
 
 ## Next Steps
 
-### Immediate
-1. **More real-world task testing**: File management, text editing, multi-app workflows (see ITERATION_PLAN.md for 40+ tasks)
-2. **Improve VLM accuracy further**: Consider UI-TARS-style approaches (fine-tuned grounding model), or SoM (Set of Marks) annotation
-3. **Consider removing y<140 validation**: It was too aggressive — YouTube search bar is at y~114. Need smarter heuristic or remove entirely.
+### Immediate — Merge & Ship
+1. **Merge winning experiments to main**: JPEG q75 1024px (Exp 5) + Ctrl+L prompt (Exp 6) should be merged to main branch
+2. **Bake Ctrl+L prompt into default prompt**: Currently requires `build_enhanced_prompt()` — should be the default in `SystemPrompts.GUI_AGENT`
+
+### Immediate — More Experiments
+3. **Larger test suite**: Add harder tasks (multi-tab, form filling, file download) to validate improvements generalize
+4. **Per-phase retry** (from UI-TARS): Independent retry for screenshot/VLM/execute — low effort, high reliability
+5. **Dual screenshot (before + after)**: Send VLM both pre-action and post-action screenshots so it can verify its last action worked
+6. **Smarter stuck detection**: Use VLM's assessment of "did my action work?" instead of just coordinate clustering
 
 ### Medium-Term
-4. **OSWorld benchmark integration**
-5. **WebArena benchmark integration**
-6. **Speed optimization**: Reduce steps per task (currently 7-15 steps for simple tasks)
-7. **Multi-step planning**: Use VLM planning prompt before execution
+7. **OSWorld / WebArena benchmarks**: Standardized evaluation beyond MiniWoB++
+8. **SoM (Set of Marks) element highlighting**: Overlay clickable element bounding boxes on screenshots before sending to VLM
+9. **Multi-step planning**: VLM generates a plan before execution, executes step by step
+10. **Adaptive image quality**: Use higher quality JPEG only when VLM reports uncertainty about coordinates
 
 ### Long-Term
-8. **Fine-tuned grounding model**: Like UI-TARS, train a model specifically for GUI coordinate grounding
-9. **DOM-assisted grounding**: Optionally use CDP to get element positions and augment VLM context
-10. **Continuous iteration following 格物致知 principles**
+11. **Fine-tuned grounding model**: Like UI-TARS, train a model specifically for GUI coordinate grounding
+12. **DOM-assisted grounding**: Optionally use CDP to get element positions and augment VLM context
+13. **Continuous iteration following 格物致知 principles**
 
 ---
 
 ## Performance Summary
 
-### Real-World Tasks (Session 8)
+### Optimized vs Baseline (Session 10, Exp 7)
+| Metric | Baseline (PNG 1344) | Optimized (JPEG 1024 + Ctrl+L) | Improvement |
+|--------|--------------------|---------------------------------|-------------|
+| Success Rate | 100% (3/3) | 100% (3/3) | — |
+| Avg Steps | 10.7 | 7.3 | **-31%** |
+| Avg Input Tokens | 6,311,382 | 905,866 | **-86%** |
+| Avg Wall Time | 49.1s | 27.0s | **-45%** |
+
+### Real-World Tasks (Session 8-10)
 | Task | Steps | Result |
 |------|-------|--------|
 | YouTube - play liked video | 7/7 | SUCCESS |
-| DuckDuckGo search | ~13/15 | PARTIAL (VLM coord accuracy) |
+| DuckDuckGo search | 7/20 (optimized) | SUCCESS |
+| Google search | 8/20 (optimized) | SUCCESS |
+| Multi-step search + scroll | 7/20 (optimized) | SUCCESS |
 
 ### MiniWoB++ Benchmark (12 tasks)
 | Metric | Value |
