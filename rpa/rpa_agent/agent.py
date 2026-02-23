@@ -112,10 +112,10 @@ class AgentConfig:
     step_budget_awareness: bool = True
 
     # Adaptive prompt: inject task-specific hints based on task keywords
-    adaptive_prompt: bool = False
+    adaptive_prompt: bool = True
 
     # Auto-navigate: extract URL from task and navigate before VLM loop
-    auto_navigate: bool = False
+    auto_navigate: bool = True
 
     # Safety settings
     confirm_actions: bool = False  # Ask before executing
