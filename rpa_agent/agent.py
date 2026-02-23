@@ -90,6 +90,11 @@ class AgentConfig:
     save_screenshots: bool = True
     screenshot_dir: Path = field(default_factory=lambda: Path("./screenshots"))
 
+    # VLM image settings
+    vlm_image_format: str = "png"  # "png" or "jpeg" — format sent to VLM
+    vlm_image_quality: int = 75  # JPEG quality for VLM images (1-100)
+    vlm_max_edge: int = 1344  # Max long edge for VLM images (pixels)
+
     # Conversation history
     max_history_turns: int = 0  # Max messages to send to VLM (0 = unlimited/original behavior)
 
@@ -253,7 +258,7 @@ class GUIAgent:
         # screen coordinates mapped to the resized pixel positions.
         vlm_img = img
         original_w, original_h = img.size
-        max_edge = 1344  # Conservative limit below API's 1568px to ensure no further resizing
+        max_edge = self.config.vlm_max_edge
         scale_factor = 1.0
         if max(original_w, original_h) > max_edge:
             scale_factor = max_edge / max(original_w, original_h)
@@ -271,9 +276,15 @@ class GUIAgent:
                 original_size=(original_w, original_h),
             )
 
-        # Encode to base64 PNG for VLM (more reliable than JPEG)
+        # Encode image for VLM
         buffer = io.BytesIO()
-        vlm_img.save(buffer, format="PNG", optimize=True)
+        vlm_format = self.config.vlm_image_format.lower()
+        if vlm_format == "jpeg":
+            if vlm_img.mode == "RGBA":
+                vlm_img = vlm_img.convert("RGB")
+            vlm_img.save(buffer, format="JPEG", quality=self.config.vlm_image_quality)
+        else:
+            vlm_img.save(buffer, format="PNG", optimize=True)
         base64_img = base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
 
         return base64_img, screenshot_path, screen_info
@@ -1021,8 +1032,9 @@ class GUIAgent:
 
                 # 2. Analyze with VLM
                 self.console.print("[dim]Analyzing screenshot...[/]")
-                # Pass as tuple (base64_data, media_type) for PNG
-                screenshot_data = (base64_img, "image/png")
+                # Pass as tuple (base64_data, media_type)
+                vlm_media_type = "image/jpeg" if self.config.vlm_image_format.lower() == "jpeg" else "image/png"
+                screenshot_data = (base64_img, vlm_media_type)
 
                 # Apply sliding window to conversation history if configured
                 if self.config.max_history_turns > 0 and self._conversation_history:

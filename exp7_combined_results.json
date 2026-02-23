@@ -1,0 +1,122 @@
+[
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "baseline",
+    "outcome": "completed",
+    "step_count": 10,
+    "total_input_tokens": 5743984,
+    "total_output_tokens": 902,
+    "wall_time_seconds": 45.7,
+    "per_step_input_tokens": [
+      556008,
+      556020,
+      572673,
+      560183,
+      561433,
+      609420,
+      558968,
+      587226,
+      594865,
+      587188
+    ]
+  },
+  {
+    "task_name": "Google Search",
+    "config_label": "baseline",
+    "outcome": "completed",
+    "step_count": 10,
+    "total_input_tokens": 5956021,
+    "total_output_tokens": 780,
+    "wall_time_seconds": 45.4,
+    "per_step_input_tokens": [
+      556601,
+      556233,
+      569956,
+      560371,
+      560751,
+      584199,
+      558876,
+      600354,
+      632529,
+      776151
+    ]
+  },
+  {
+    "task_name": "Multi-step Search + Scroll",
+    "config_label": "baseline",
+    "outcome": "completed",
+    "step_count": 12,
+    "total_input_tokens": 7234140,
+    "total_output_tokens": 1097,
+    "wall_time_seconds": 56.3,
+    "per_step_input_tokens": [
+      557485,
+      557936,
+      574599,
+      561628,
+      563004,
+      611165,
+      560990,
+      589569,
+      596153,
+      606001,
+      735385,
+      720225
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "combined",
+    "outcome": "completed",
+    "step_count": 7,
+    "total_input_tokens": 848801,
+    "total_output_tokens": 616,
+    "wall_time_seconds": 26.9,
+    "per_step_input_tokens": [
+      117414,
+      117921,
+      126075,
+      118031,
+      122223,
+      123388,
+      123749
+    ]
+  },
+  {
+    "task_name": "Google Search",
+    "config_label": "combined",
+    "outcome": "completed",
+    "step_count": 7,
+    "total_input_tokens": 876407,
+    "total_output_tokens": 795,
+    "wall_time_seconds": 26.3,
+    "per_step_input_tokens": [
+      117649,
+      117895,
+      121628,
+      118121,
+      124083,
+      129440,
+      147591
+    ]
+  },
+  {
+    "task_name": "Multi-step Search + Scroll",
+    "config_label": "combined",
+    "outcome": "completed",
+    "step_count": 8,
+    "total_input_tokens": 992391,
+    "total_output_tokens": 677,
+    "wall_time_seconds": 27.8,
+    "per_step_input_tokens": [
+      117544,
+      117794,
+      126091,
+      118196,
+      123039,
+      122941,
+      122903,
+      143883
+    ]
+  }
+]
