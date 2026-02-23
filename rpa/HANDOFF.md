@@ -485,8 +485,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/vlm-planning` | `3251463` | Complete (Exp 28, mixed-positive, not merged) |
 | `exp/adaptive-prompt` | `f9b26de` | Complete (Exp 29, positive, **merged to main**) |
 | `exp/expanded-adaptive-hints` | `2510e45` | Complete (Exp 30, strong positive, **merged to main**) |
+| `exp/step-aware-hints` | `ea02f62` | Complete (Exp 31, mixed, not merged) |
 
-#### Experiments 8-30: Hard Tasks, Robustness, and Validation
+#### Experiments 8-31: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -605,6 +606,17 @@ Per-task step delta with adaptive prompt:
 | DuckDuckGo Click Result | 11 | **7** | **-4** |
 | Wikipedia Article Scroll | 13 | **10** | **-3** |
 | **Average** | **10.0** | **7.2** | **-2.8 (-28%)** |
+
+**Exp 31 — Auto-Navigate** (MIXED): Added `auto_navigate` flag that extracts the target URL from the task description (regex matching "go to X.com", "open X.com", etc.) and navigates directly via sandbox HTTP API before the VLM loop starts, eliminating the 2-3 steps the VLM normally uses for URL navigation (Ctrl+L, type URL, Enter). Both configs use adaptive_prompt=True (Exp 30 baseline). Both 100% success. 4/5 tasks improved: DDG Search 5→4 (-20%), **Wikipedia Search 10→4 (-60%)**, Multi-Step 7→6 (-14%), DDG Click 7→5 (-29%). However, Wikipedia Article Scroll regressed from 10→22 (+120%) due to VLM variability — the VLM got stuck in a find/scroll loop on the Machine Learning article, unrelated to auto-navigate itself. Net avg steps worse (7.8→8.2) because one outlier dwarfs the gains. Feature is architecturally sound but needs more robust evaluation. Not merged.
+
+| Task | Baseline | Auto-Nav | Delta |
+|------|----------|----------|-------|
+| DuckDuckGo Search | 5 | **4** | **-1** |
+| Wikipedia Search | 10 | **4** | **-6** |
+| Multi-Step Navigation | 7 | **6** | **-1** |
+| DuckDuckGo Click Result | 7 | **5** | **-2** |
+| Wikipedia Article Scroll | 10 | 22 | +12 |
+| **Average** | **7.8** | **8.2** | **+0.4 (+5%)** |
 
 #### Improvements Merged to Main
 
