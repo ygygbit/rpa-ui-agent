@@ -422,6 +422,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 26 | `exp/early-done-detection` | Early done nudge on success reasoning | **MIXED** | Target case -20% steps, but 21 false-positive nudges |
 | 27 | `exp/smart-coord-retry` | Auto-scroll on out-of-bounds Y coords | **NEUTRAL** | Feature never triggered; 0 coord rejections in all runs |
 | 28 | `exp/vlm-planning` | VLM generates plan before executing | **MIXED-POSITIVE** | Wikipedia Scroll -20% steps, but plan overhead on simple tasks |
+| 29 | `exp/adaptive-prompt` | Task-specific strategy hints (Ctrl+F, Enter) | **POSITIVE** | Wikipedia Scroll -35% steps (20→13), avg -12% steps, -16% tokens |
 
 #### Detailed Experiment Findings
 
@@ -480,8 +481,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/early-done-detection` | `0e95b9c` | Complete (Exp 26, mixed, not merged) |
 | `exp/smart-coord-retry` | `b151188` | Complete (Exp 27, neutral, not merged) |
 | `exp/vlm-planning` | `3251463` | Complete (Exp 28, mixed-positive, not merged) |
+| `exp/adaptive-prompt` | `f9b26de` | Complete (Exp 29, positive, merge candidate) |
 
-#### Experiments 8-28: Hard Tasks, Robustness, and Validation
+#### Experiments 8-29: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -573,6 +575,22 @@ Historical comparison: Exp 8 original hard tasks 80% (4/5), Exp 12 baseline 80% 
 |--------|---------|-----------|-----------------|----------|
 | baseline | 100% (5/5) | 10.0 | 882,005 | 38.3s |
 | planning | 100% (5/5) | 10.2 (9.2 action) | 846,111 | 37.0s |
+
+**Exp 29 — Adaptive Prompt** (POSITIVE): Added `adaptive_prompt` flag that injects task-specific strategy hints into the VLM task string based on keyword matching. Three hint categories: (1) Ctrl+F hint for section-finding tasks (triggers on "find the", "locate the", "scroll to the"), (2) Tab hint for form-filling tasks, (3) Enter-to-submit hint for search tasks without explicit "click". Both configs 100% success. Wikipedia Article Scroll saw the biggest improvement: **20 → 13 steps (-35%)** — the VLM actually used Ctrl+F to find the History section instead of scrolling through the entire article. Multi-Step Navigation improved 10 → 9 steps. Tasks without hints performed identically. Average steps: 11.4 → 10.0 (-12%), tokens: 1,035K → 867K (-16%). The adaptive hints are low-cost (just text in the prompt) with high impact on the right task types. Merge candidate.
+
+| Config | Success | Avg Steps | Avg Input Tokens | Avg Time |
+|--------|---------|-----------|-----------------|----------|
+| baseline | 100% (5/5) | 11.4 | 1,035,296 | 42.6s |
+| **adaptive** | **100% (5/5)** | **10.0** | **866,795** | **36.1s** |
+
+Per-task step delta with adaptive prompt:
+| Task | Baseline | Adaptive | Delta | Hints |
+|------|----------|----------|-------|-------|
+| DuckDuckGo Search | 8 | 8 | 0 | Enter hint |
+| Wikipedia Search | 9 | 9 | 0 | none |
+| Multi-Step Navigation | 10 | 9 | -1 | Enter hint |
+| DuckDuckGo Click Result | 10 | 11 | +1 | none |
+| Wikipedia Article Scroll | 20 | 13 | **-7** | Ctrl+F hint |
 
 #### Improvements Merged to Main
 
