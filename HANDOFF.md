@@ -420,6 +420,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 24 | `exp/adaptive-delay` | Adaptive step delays (0.2/2.5) | **NEUTRAL/NEGATIVE** | +10% time, current 0.5/1.5 well-tuned |
 | 25 | `exp/scroll-multiplier` | Double scroll distance (2x) | **NEUTRAL** | Same avg steps, no meaningful change |
 | 26 | `exp/early-done-detection` | Early done nudge on success reasoning | **MIXED** | Target case -20% steps, but 21 false-positive nudges |
+| 27 | `exp/smart-coord-retry` | Auto-scroll on out-of-bounds Y coords | **NEUTRAL** | Feature never triggered; 0 coord rejections in all runs |
 
 #### Detailed Experiment Findings
 
@@ -476,8 +477,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/adaptive-delay` | `3856928` | Complete (Exp 24, neutral/negative) |
 | `exp/scroll-multiplier` | `5bfc6dd` | Complete (Exp 25, neutral) |
 | `exp/early-done-detection` | `0e95b9c` | Complete (Exp 26, mixed, not merged) |
+| `exp/smart-coord-retry` | `b151188` | Complete (Exp 27, neutral, not merged) |
 
-#### Experiments 8-26: Hard Tasks, Robustness, and Validation
+#### Experiments 8-27: Hard Tasks, Robustness, and Validation
 
 **Exp 8 — Harder Tasks** (80% success, 4/5): Tested optimized config on harder multi-step tasks (Wikipedia lookup, DuckDuckGo click result, multi-tab workflow, scroll+back nav, text selection). Wikipedia and multi-tab tasks completed well. "Page Scroll + Back Navigation" failed at 25 max steps.
 
@@ -555,6 +557,13 @@ Historical comparison: Exp 8 original hard tasks 80% (4/5), Exp 12 baseline 80% 
 |--------|---------|-----------|-----------------|----------|--------|
 | baseline | 100% (5/5) | 9.6 | 841,436 | 35.5s | 0 |
 | early-done | 100% (5/5) | 9.6 | 826,766 | 39.3s | 21 |
+
+**Exp 27 — Smart Coordinate Retry** (NEUTRAL): Added `smart_coord_retry` flag that auto-scrolls when the VLM reports out-of-bounds Y coordinates (y >= screen_height → scroll down, y < 0 → scroll up) instead of a generic re-query warning. Both configs 100% success. The feature was never triggered — **zero coordinate rejections across all 10 task runs**. The out-of-bounds Y issue seen in Exp 26 (y=1144 on 1080 screen) is infrequent and didn't reproduce. Smart-retry was slightly worse on average (11.4 vs 9.8 steps) due to normal VLM variance, not the feature itself. Not merged.
+
+| Config | Success | Avg Steps | Avg Input Tokens | Avg Time |
+|--------|---------|-----------|-----------------|----------|
+| baseline | 100% (5/5) | 9.8 | 853,545 | 36.4s |
+| smart-retry | 100% (5/5) | 11.4 | 1,058,314 | 43.0s |
 
 #### Improvements Merged to Main
 
