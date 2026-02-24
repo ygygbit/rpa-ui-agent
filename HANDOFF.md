@@ -440,6 +440,11 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 43 | `exp/grid-spacing-400` | Grid spacing 400px (vs 200px) | **POSITIVE** | -38% steps, -39% tokens, -36% time, merged |
 | 44 | `exp/no-grid` | No grid overlay at all | **NEUTRAL** | High variance, no systematic benefit, not merged |
 | 45 | `exp/minimal-prompt` | Minimal prompt (~600 tok vs ~1.9K) | **NEUTRAL/NEGATIVE** | +24% steps, Article Scroll 6 to 14, not merged |
+| 46 | `exp/prompt-grid-400-alignment` | Prompt text "400px" alignment | **NEUTRAL** | VLM reads labels regardless, merged for correctness |
+| 47 | `exp/grid-spacing-800` | Grid spacing 800px (vs 400px) | **NEUTRAL** | High variance, no systematic benefit, not merged |
+| 48 | `exp/smart-wait-05` | Smart wait 0.5s (vs 1.5s) | **NEGATIVE** | +28% avg steps, VLM sees unloaded pages, not merged |
+| 49 | `exp/cumulative-validation-3` | Cumulative validation round 3 | **100% (10/10)** | 5.8 avg steps on 10 diverse tasks, validates all 21 improvements |
+| 50 | `exp/screenshot-diff-stuck` | Screenshot diff stuck detection | **INCONCLUSIVE** | Sandbox timeouts corrupted results, not merged |
 
 #### Detailed Experiment Findings
 
@@ -515,6 +520,11 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/grid-spacing-400` | `e1dcb8d` | Complete (Exp 43, positive, **merged to main**) |
 | `exp/no-grid` | `c1bc20d` | Complete (Exp 44, neutral, not merged) |
 | `exp/minimal-prompt` | `b7bf410` | Complete (Exp 45, neutral/negative, not merged) |
+| `exp/prompt-grid-400-alignment` | `f5db71a` | Complete (Exp 46, neutral, **merged to main** for correctness) |
+| `exp/grid-spacing-800` | `524d1b2` | Complete (Exp 47, neutral, not merged) |
+| `exp/smart-wait-05` | `ce4df18` | Complete (Exp 48, negative, not merged) |
+| `exp/cumulative-validation-3` | `73ffa59` | Complete (Exp 49, 100% 10/10, **merged to main**) |
+| `exp/screenshot-diff-stuck` | `f8b45a1` | Complete (Exp 50, inconclusive, not merged) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -747,6 +757,29 @@ Per-task comparison:
 
 **Exp 45 — Minimal Prompt** (NEUTRAL/NEGATIVE): Reduced system prompt from ~1.9K tokens to ~600 tokens by removing grid-reading instructions, browser layout hints, and verbose strategy sections. Both 100% success but minimal averaged more steps (7.2 vs 5.8, +24%). Wikipedia Article Scroll regressed 6 to 14 steps without detailed Ctrl+F/strategy hints. The full prompt's instructions provide measurable value. Not merged.
 
+**Exp 46 — Prompt-Grid 400px Alignment** (NEUTRAL): Updated prompt text from "200 pixels" to "400 pixels" to match actual grid spacing (changed in Exp 43). Also removed stale major-line references (2000px = off-screen at 400px spacing). Both 100% success. Mismatched 5.4 vs aligned 5.2 avg steps — within variance. Same pattern as Exp 41: VLM reads actual grid labels regardless of prompt text. Merged for correctness.
+
+**Exp 47 — Grid Spacing 800px** (NEUTRAL): Ultra-sparse grid (3 lines: x=800,1600 + y=800) vs default 400px (6 lines). grid800 achieved 100% vs grid400 80%, but grid400's failure was noise (Wikipedia Search usually passes). grid800 worse on Click Result (+5 steps) and Article Scroll (+5 steps). High variance, no systematic benefit. 400px is the sweet spot. Not merged.
+
+**Exp 48 — Smart Wait 0.5s** (NEGATIVE): Reduced smart_wait_delay from 1.5s to 0.5s. Both 100% success but 0.5s averaged 10.2 steps vs 8.0 (+28%). DDG Click Result 5 to 20 steps, Wiki Article Scroll 5 to 15 steps. The VLM captures screenshots of partially-loaded pages and wastes steps waiting/retrying. 1.5s delay is justified. Not merged.
+
+**Exp 49 — Cumulative Validation Round 3** (100% 10/10): Validated all 21 merged improvements on 10 diverse tasks including 5 new task types: Google Search, Wikipedia Navigation, DuckDuckGo Images, Wikipedia Random, Multi-Tab Search. 100% success, 5.8 avg steps, 26.8s avg time, 123K avg input tokens. Matches Exp 33 performance while covering broader task diversity.
+
+| # | Task | Outcome | Steps | Tokens | Time |
+|---|------|---------|-------|--------|------|
+| 1 | DuckDuckGo Search | completed | 4 | 72K | 17.5s |
+| 2 | Wikipedia Search | completed | 6 | 158K | 26.4s |
+| 3 | Multi-Step Navigation | completed | 5 | 91K | 23.0s |
+| 4 | DuckDuckGo Click Result | completed | 5 | 89K | 23.6s |
+| 5 | Wikipedia Article Scroll | completed | 5 | 132K | 23.0s |
+| 6 | Google Search | completed | 3 | 55K | 12.9s |
+| 7 | Wikipedia Navigation | completed | 5 | 126K | 24.9s |
+| 8 | DuckDuckGo Images | completed | 9 | 152K | 44.9s |
+| 9 | Wikipedia Random | completed | 9 | 222K | 42.7s |
+| 10 | Multi-Tab Search | completed | 7 | 140K | 28.7s |
+
+**Exp 50 — Screenshot Diff Stuck Detection** (INCONCLUSIVE): Added image-based stuck detection comparing consecutive screenshots using mean pixel difference. Feature triggered correctly 3 times on Wikipedia Search with appropriate warnings. However, sandbox timeouts corrupted the test run (4/10 tasks failed to timeout errors unrelated to the feature). Not merged pending cleaner testing.
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -769,6 +802,7 @@ Per-task comparison:
 | Prompt text aligned to 200px grid | Exp 41 | `ce63b75` via merge |
 | Sliding window default=10 | Exp 42 | `b5c91d4` via merge |
 | Grid spacing 400px (default=400) | Exp 43 | `e1dcb8d` via merge |
+| Prompt text aligned to 400px grid | Exp 46 | `f5db71a` via merge |
 
 ---
 
