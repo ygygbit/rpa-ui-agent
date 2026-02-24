@@ -223,15 +223,15 @@ class GUIAgent:
         self._recent_actions: List[str] = []  # Track recent actions for stuck detection
         self._vlm_scale_factor: float = 1.0  # Ratio of original/VLM image size
 
-        # Build system prompt — config override > operator template > default
+        # Build system prompt — config override > operator compressed template > default compressed
         if self.config.system_prompt:
             self._system_prompt = self.config.system_prompt
         elif self.operator:
-            self._system_prompt = SystemPrompts.GUI_AGENT_TEMPLATE.replace(
+            self._system_prompt = SystemPrompts.GUI_AGENT_COMPRESSED_TEMPLATE.replace(
                 "{{action_space}}", self.operator.action_space()
             )
         else:
-            self._system_prompt = None  # Use default (SystemPrompts.GUI_AGENT)
+            self._system_prompt = SystemPrompts.GUI_AGENT_COMPRESSED
 
         # Ensure screenshot directory exists
         self.config.screenshot_dir.mkdir(parents=True, exist_ok=True)
