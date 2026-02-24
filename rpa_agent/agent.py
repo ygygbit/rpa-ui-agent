@@ -121,6 +121,9 @@ class AgentConfig:
     confirm_actions: bool = False  # Ask before executing
     dry_run: bool = False  # Don't actually execute actions
 
+    # Grid overlay settings
+    grid_spacing: int = 100  # Grid line spacing in original pixels (100 or 200)
+
     # Visual feedback
     show_cursor_overlay: bool = True  # Show visual cursor indicator on screen
     show_action_notifier: bool = True  # Show action notification UI
@@ -292,6 +295,7 @@ class GUIAgent:
         if self.config.show_coordinate_grid:
             vlm_img = self._draw_coordinate_grid(
                 vlm_img,
+                spacing=self.config.grid_spacing,
                 original_size=(original_w, original_h),
             )
 
@@ -396,16 +400,17 @@ class GUIAgent:
                 font = ImageFont.load_default()
 
         grid_color = (255, 0, 0, 50)       # Semi-transparent red lines
-        major_grid_color = (255, 0, 0, 90)  # Brighter red for 500px lines
+        major_grid_color = (255, 0, 0, 90)  # Brighter red for major lines
         label_bg = (0, 0, 0, 160)           # Dark background for readability
         label_fg = (255, 255, 0)            # Yellow text
+        major_interval = spacing * 5        # Major line every 5th grid line
 
         # Draw vertical lines — iterate in original coordinate space
         for orig_x in range(spacing, orig_w, spacing):
             px = round(orig_x * sx)  # pixel position in current image
             if px <= 0 or px >= w:
                 continue
-            is_major = (orig_x % 500 == 0)
+            is_major = (orig_x % major_interval == 0)
             color = major_grid_color if is_major else grid_color
             line_width = 2 if is_major else 1
             draw.line([(px, 0), (px, h)], fill=color, width=line_width)
@@ -426,7 +431,7 @@ class GUIAgent:
             py = round(orig_y * sy)  # pixel position in current image
             if py <= 0 or py >= h:
                 continue
-            is_major = (orig_y % 500 == 0)
+            is_major = (orig_y % major_interval == 0)
             color = major_grid_color if is_major else grid_color
             line_width = 2 if is_major else 1
             draw.line([(0, py), (w, py)], fill=color, width=line_width)
@@ -1225,6 +1230,12 @@ class GUIAgent:
 
                 # Build task string with optional adaptive hints and step budget awareness
                 task_for_vlm = task
+                if self.config.grid_spacing != 100:
+                    task_for_vlm += (
+                        f"\n\n[Grid Info] The coordinate grid overlay has lines every "
+                        f"{self.config.grid_spacing} pixels (not 100). Interpolate between "
+                        f"grid lines for coordinates that fall between them."
+                    )
                 if self.config.adaptive_prompt:
                     adaptive_hints = self._build_adaptive_hints(task)
                     if adaptive_hints:

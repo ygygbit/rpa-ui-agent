@@ -1,0 +1,200 @@
+[
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "grid100",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 94372,
+    "total_output_tokens": 388,
+    "wall_time_seconds": 16.7,
+    "grid_spacing": 100,
+    "per_step_input_tokens": [
+      21795,
+      21823,
+      21975,
+      28779
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "grid100",
+    "outcome": "completed",
+    "step_count": 13,
+    "total_input_tokens": 369315,
+    "total_output_tokens": 2101,
+    "wall_time_seconds": 51.5,
+    "grid_spacing": 100,
+    "per_step_input_tokens": [
+      30344,
+      25106,
+      25286,
+      25673,
+      26285,
+      24308,
+      26360,
+      28966,
+      29008,
+      32076,
+      33099,
+      31684,
+      31120
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "grid100",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 118769,
+    "total_output_tokens": 424,
+    "wall_time_seconds": 20.0,
+    "grid_spacing": 100,
+    "per_step_input_tokens": [
+      21845,
+      21860,
+      21729,
+      27711,
+      25624
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "grid100",
+    "outcome": "completed",
+    "step_count": 6,
+    "total_input_tokens": 139323,
+    "total_output_tokens": 644,
+    "wall_time_seconds": 26.3,
+    "grid_spacing": 100,
+    "per_step_input_tokens": [
+      21766,
+      21611,
+      22083,
+      21910,
+      29099,
+      22854
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "grid100",
+    "outcome": "completed",
+    "step_count": 18,
+    "total_input_tokens": 545153,
+    "total_output_tokens": 2713,
+    "wall_time_seconds": 69.1,
+    "grid_spacing": 100,
+    "per_step_input_tokens": [
+      30575,
+      25405,
+      26188,
+      27090,
+      26299,
+      31478,
+      31574,
+      31046,
+      31994,
+      26853,
+      27768,
+      27946,
+      27948,
+      32905,
+      33590,
+      33736,
+      36338,
+      36420
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "grid200",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 80903,
+    "total_output_tokens": 568,
+    "wall_time_seconds": 18.0,
+    "grid_spacing": 200,
+    "per_step_input_tokens": [
+      18431,
+      18230,
+      18056,
+      26186
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "grid200",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 136364,
+    "total_output_tokens": 543,
+    "wall_time_seconds": 20.3,
+    "grid_spacing": 200,
+    "per_step_input_tokens": [
+      27450,
+      27635,
+      28665,
+      26866,
+      25748
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "grid200",
+    "outcome": "completed",
+    "step_count": 6,
+    "total_input_tokens": 120090,
+    "total_output_tokens": 574,
+    "wall_time_seconds": 25.8,
+    "grid_spacing": 200,
+    "per_step_input_tokens": [
+      18374,
+      18115,
+      18380,
+      18173,
+      24604,
+      22444
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "grid200",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 98711,
+    "total_output_tokens": 659,
+    "wall_time_seconds": 22.2,
+    "grid_spacing": 200,
+    "per_step_input_tokens": [
+      18101,
+      18200,
+      18356,
+      24985,
+      19069
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "grid200",
+    "outcome": "completed",
+    "step_count": 12,
+    "total_input_tokens": 354178,
+    "total_output_tokens": 1049,
+    "wall_time_seconds": 43.2,
+    "grid_spacing": 200,
+    "per_step_input_tokens": [
+      27606,
+      27754,
+      28933,
+      29353,
+      29534,
+      30174,
+      30334,
+      28415,
+      32065,
+      32063,
+      28961,
+      28986
+    ]
+  }
+]
