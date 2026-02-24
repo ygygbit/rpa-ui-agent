@@ -130,7 +130,7 @@ class AgentConfig:
     # Visual feedback
     show_cursor_overlay: bool = True  # Show visual cursor indicator on screen
     show_action_notifier: bool = True  # Show action notification UI
-    show_coordinate_grid: bool = True  # Draw coordinate grid overlay on screenshots for VLM
+    show_coordinate_grid: bool = False  # Grid overlay unnecessary at 1344px (Exp 66)
 
     # Retry settings
     max_retries: int = 3
