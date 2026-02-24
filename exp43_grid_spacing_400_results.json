@@ -1,0 +1,213 @@
+[
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "grid200",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 80396,
+    "total_output_tokens": 382,
+    "wall_time_seconds": 19.4,
+    "grid_spacing": 200,
+    "per_step_input_tokens": [
+      18096,
+      18286,
+      18379,
+      25635
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "grid200",
+    "outcome": "completed",
+    "step_count": 25,
+    "total_input_tokens": 623376,
+    "total_output_tokens": 2292,
+    "wall_time_seconds": 91.4,
+    "grid_spacing": 200,
+    "per_step_input_tokens": [
+      27553,
+      27855,
+      27814,
+      23406,
+      23594,
+      23821,
+      24110,
+      19429,
+      20078,
+      20674,
+      19825,
+      19029,
+      28134,
+      27238,
+      27239,
+      27398,
+      28025,
+      22346,
+      23076,
+      22100,
+      28640,
+      29009,
+      29100,
+      27583,
+      26300
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "grid200",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 102585,
+    "total_output_tokens": 892,
+    "wall_time_seconds": 22.6,
+    "grid_spacing": 200,
+    "per_step_input_tokens": [
+      18059,
+      18391,
+      18215,
+      24926,
+      22994
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "grid200",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 98496,
+    "total_output_tokens": 513,
+    "wall_time_seconds": 20.2,
+    "grid_spacing": 200,
+    "per_step_input_tokens": [
+      18200,
+      18246,
+      18246,
+      24995,
+      18809
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "grid200",
+    "outcome": "completed",
+    "step_count": 17,
+    "total_input_tokens": 422773,
+    "total_output_tokens": 3086,
+    "wall_time_seconds": 70.2,
+    "grid_spacing": 200,
+    "per_step_input_tokens": [
+      27594,
+      23195,
+      23656,
+      23773,
+      19844,
+      20645,
+      20690,
+      20394,
+      20528,
+      19705,
+      29248,
+      29074,
+      28728,
+      28858,
+      28970,
+      28896,
+      28975
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "grid400",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 71643,
+    "total_output_tokens": 493,
+    "wall_time_seconds": 17.0,
+    "grid_spacing": 400,
+    "per_step_input_tokens": [
+      15919,
+      16101,
+      15733,
+      23890
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "grid400",
+    "outcome": "completed",
+    "step_count": 8,
+    "total_input_tokens": 196590,
+    "total_output_tokens": 1605,
+    "wall_time_seconds": 35.3,
+    "grid_spacing": 400,
+    "per_step_input_tokens": [
+      14605,
+      22441,
+      26285,
+      26556,
+      27686,
+      27935,
+      26209,
+      24873
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "grid400",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 90412,
+    "total_output_tokens": 406,
+    "wall_time_seconds": 20.7,
+    "grid_spacing": 400,
+    "per_step_input_tokens": [
+      16194,
+      16155,
+      15716,
+      22224,
+      20123
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "grid400",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 87797,
+    "total_output_tokens": 637,
+    "wall_time_seconds": 21.6,
+    "grid_spacing": 400,
+    "per_step_input_tokens": [
+      15933,
+      16136,
+      15658,
+      23364,
+      16706
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "grid400",
+    "outcome": "completed",
+    "step_count": 13,
+    "total_input_tokens": 361097,
+    "total_output_tokens": 1677,
+    "wall_time_seconds": 48.1,
+    "grid_spacing": 400,
+    "per_step_input_tokens": [
+      25981,
+      27028,
+      27348,
+      25930,
+      26598,
+      30380,
+      30150,
+      26739,
+      26721,
+      30393,
+      30174,
+      26906,
+      26749
+    ]
+  }
+]

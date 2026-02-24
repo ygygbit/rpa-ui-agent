@@ -122,7 +122,7 @@ class AgentConfig:
     dry_run: bool = False  # Don't actually execute actions
 
     # Grid overlay settings
-    grid_spacing: int = 200  # Grid line spacing in original pixels (100 or 200)
+    grid_spacing: int = 400  # Grid line spacing in original pixels
 
     # Visual feedback
     show_cursor_overlay: bool = True  # Show visual cursor indicator on screen
