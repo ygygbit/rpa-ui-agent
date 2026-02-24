@@ -492,6 +492,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 95 | `exp/history-window-14` | max_history_turns=14 vs 10 | **NEUTRAL** | 7.0 vs 6.4 steps, extra context doesn't help |
 | 96 | `exp/cumulative-validation-7` | Cumulative validation round 7 | **VALIDATION** | 9/10 90%, 16K tok/step, stable |
 | 97 | `exp/no-smart-wait` | smart_wait=False vs True | **NEUTRAL** | 7.2 vs 7.4 steps, -21% wall time but stuck loop risk |
+| 98 | `exp/smart-wait-05-v2` | smart_wait_delay=0.5 vs 1.5 | **NEGATIVE** | 4/5 (80%) vs 5/5, 11.6 vs 8.6 steps, DDG Click fails with 0.5s |
 
 #### Detailed Experiment Findings
 
@@ -619,6 +620,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/history-window-14` | `0644593` | Complete (Exp 95, neutral, not merged) |
 | `exp/cumulative-validation-7` | `9abda8f` | Complete (Exp 96, validation) |
 | `exp/no-smart-wait` | `61e39be` | Complete (Exp 97, neutral, not merged) |
+| `exp/smart-wait-05-v2` | `2f559b4` | Complete (Exp 98, negative, not merged) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -973,6 +975,8 @@ Merged to main as default.
 **Exp 96 — Cumulative Validation Round 7** (VALIDATION): 10 diverse tasks, all defaults. 9/10 (90%) — Wikipedia Main Page hit max_steps. 16K tok/step, stable. Historical: 36K -> 23K -> 24K -> 24K -> 15K -> 16K -> 16K.
 
 **Exp 97 — Smart Wait Off vs On** (NEUTRAL): smart_wait=False: 7.2 avg steps, 107K tok, 22.7s. smart_wait=True: 7.4 avg steps, 111K tok, 28.6s. Disabling smart wait saves 21% wall time with same success rate. However, one Multi-Step Nav task hit stuck loop without wait. Wall time gain attractive but reliability concern.
+
+**Exp 98 — Smart Wait 0.5s vs 1.5s** (NEGATIVE): Testing a middle ground between Exp 97's no-wait and default 1.5s. sw1.5: 5/5 (100%), 8.6 avg steps, 126K tok, 33.2s. sw0.5: 4/5 (80%), 11.6 avg steps, 175K tok, 37.2s. DDG Click Result FAILED with 0.5s (25 steps, page crashes and stuck loops). Multi-Step Nav degraded (9 vs 5 steps). Confirms 1.5s is the right default — even halving the wait hurts reliability significantly.
 
 #### Improvements Merged to Main
 
