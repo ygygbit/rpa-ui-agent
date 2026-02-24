@@ -117,6 +117,9 @@ class AgentConfig:
     # Auto-navigate: extract URL from task and navigate before VLM loop
     auto_navigate: bool = True
 
+    # Custom system prompt override (None = use default GUI_AGENT prompt)
+    system_prompt: Optional[str] = None
+
     # Safety settings
     confirm_actions: bool = False  # Ask before executing
     dry_run: bool = False  # Don't actually execute actions
@@ -220,8 +223,10 @@ class GUIAgent:
         self._recent_actions: List[str] = []  # Track recent actions for stuck detection
         self._vlm_scale_factor: float = 1.0  # Ratio of original/VLM image size
 
-        # Build system prompt — use operator's action space if available
-        if self.operator:
+        # Build system prompt — config override > operator template > default
+        if self.config.system_prompt:
+            self._system_prompt = self.config.system_prompt
+        elif self.operator:
             self._system_prompt = SystemPrompts.GUI_AGENT_TEMPLATE.replace(
                 "{{action_space}}", self.operator.action_space()
             )
