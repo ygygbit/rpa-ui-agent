@@ -96,7 +96,7 @@ class AgentConfig:
     vlm_max_edge: int = 1024  # Max long edge for VLM images (pixels, 1024 is optimal)
 
     # Conversation history
-    max_history_turns: int = 0  # Max messages to send to VLM (0 = unlimited/original behavior)
+    max_history_turns: int = 10  # Max messages to send to VLM (0 = unlimited, 10 = last 5 exchanges)
 
     # Coordinate validation: "strict" (y<140), "relaxed" (y<100), "off" (bounds only)
     coordinate_validation: str = "relaxed"

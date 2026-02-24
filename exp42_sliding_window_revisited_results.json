@@ -1,0 +1,206 @@
+[
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "unlimited",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 80441,
+    "total_output_tokens": 506,
+    "wall_time_seconds": 17.7,
+    "max_history_turns": 0,
+    "per_step_input_tokens": [
+      18023,
+      18276,
+      18056,
+      26086
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "unlimited",
+    "outcome": "completed",
+    "step_count": 12,
+    "total_input_tokens": 285282,
+    "total_output_tokens": 2248,
+    "wall_time_seconds": 53.9,
+    "max_history_turns": 0,
+    "per_step_input_tokens": [
+      27406,
+      22855,
+      23495,
+      23741,
+      24249,
+      24563,
+      24953,
+      20550,
+      21425,
+      22083,
+      21791,
+      28171
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "unlimited",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 101681,
+    "total_output_tokens": 471,
+    "wall_time_seconds": 22.7,
+    "max_history_turns": 0,
+    "per_step_input_tokens": [
+      18301,
+      18176,
+      18330,
+      24223,
+      22651
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "unlimited",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 97629,
+    "total_output_tokens": 540,
+    "wall_time_seconds": 21.5,
+    "max_history_turns": 0,
+    "per_step_input_tokens": [
+      18048,
+      18354,
+      17805,
+      25136,
+      18286
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "unlimited",
+    "outcome": "completed",
+    "step_count": 17,
+    "total_input_tokens": 432616,
+    "total_output_tokens": 2116,
+    "wall_time_seconds": 65.4,
+    "max_history_turns": 0,
+    "per_step_input_tokens": [
+      27548,
+      22859,
+      23475,
+      23694,
+      19745,
+      20194,
+      20618,
+      20488,
+      20938,
+      21044,
+      21078,
+      29361,
+      29580,
+      33234,
+      33266,
+      32629,
+      32865
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "window10",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 79936,
+    "total_output_tokens": 509,
+    "wall_time_seconds": 17.2,
+    "max_history_turns": 10,
+    "per_step_input_tokens": [
+      18015,
+      18220,
+      18045,
+      25656
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "window10",
+    "outcome": "completed",
+    "step_count": 10,
+    "total_input_tokens": 230522,
+    "total_output_tokens": 1750,
+    "wall_time_seconds": 41.8,
+    "max_history_turns": 10,
+    "per_step_input_tokens": [
+      27561,
+      22986,
+      23535,
+      23853,
+      24199,
+      19959,
+      20545,
+      20883,
+      20553,
+      26448
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "window10",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 102602,
+    "total_output_tokens": 603,
+    "wall_time_seconds": 21.3,
+    "max_history_turns": 10,
+    "per_step_input_tokens": [
+      18381,
+      18400,
+      18136,
+      24955,
+      22730
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "window10",
+    "outcome": "completed",
+    "step_count": 6,
+    "total_input_tokens": 123270,
+    "total_output_tokens": 707,
+    "wall_time_seconds": 28.8,
+    "max_history_turns": 10,
+    "per_step_input_tokens": [
+      18245,
+      18356,
+      17821,
+      24781,
+      24784,
+      19283
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "window10",
+    "outcome": "completed",
+    "step_count": 16,
+    "total_input_tokens": 411101,
+    "total_output_tokens": 2786,
+    "wall_time_seconds": 63.4,
+    "max_history_turns": 10,
+    "per_step_input_tokens": [
+      27603,
+      22923,
+      23510,
+      23888,
+      19956,
+      20448,
+      20690,
+      20351,
+      20666,
+      28614,
+      32026,
+      31821,
+      28906,
+      28734,
+      32239,
+      28726
+    ]
+  }
+]
