@@ -8,7 +8,7 @@
 
 This is a Vision-Language Model (VLM) based RPA agent that automates GUI tasks by:
 1. Capturing screenshots from a Docker sandbox (1920x1080 Linux + Chrome)
-2. Resizing to 1344x756 and encoding as JPEG q2
+2. Resizing to 1120x630 and encoding as JPEG q2
 3. Sending to VLM for analysis (Claude via Anthropic API or custom endpoint)
 4. Parsing JSON actions from VLM response
 5. Executing mouse/keyboard actions via XTEST (python-xlib)
@@ -461,6 +461,16 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 64 | `exp/temperature-0` | VLM temperature 0.0 vs 0.1 | **NEUTRAL** | DDG Click Result regressed (15 steps), deterministic stuck loop |
 | 65 | `exp/compact-action-space` | Compact action space format | **NEGATIVE** | DDG Click Result regressed (19 steps), verbose format helps VLM |
 | 66 | `exp/no-grid-overlay` | No grid overlay at 1344px | **POSITIVE** | -8% tok/step, -22% time, VLM doesn't need grid at 1344px, merged |
+| 67 | `exp/no-step-budget` | No step budget awareness | **NEUTRAL** | Results flip between runs, no consistent improvement |
+| 68 | `exp/max-tokens-1024` | Max tokens 1024 vs 4096 | **NEGATIVE** | Wikipedia Article Scroll regression (23 vs 5 steps) |
+| 69 | `exp/max-tokens-2048` | Max tokens 2048 vs 4096 | **NEUTRAL** | Identical performance, max_tokens doesn't impact this VLM setup |
+| 70 | `exp/history-window-6` | History window 6 vs 10 | **NEUTRAL** | High per-task variance, no consistent improvement across 2 runs |
+| 71 | `exp/no-adaptive-prompt` | No adaptive prompt | **NEGATIVE** | 8.0 vs 5.2 avg steps, Wikipedia regressed 21 vs 7 steps |
+| 72 | `exp/smart-wait-0.5` | Smart wait 0.5s vs 1.5s | **NEUTRAL** | Run 1 better at 0.5s, run 2 better at 1.5s. Inconsistent |
+| 73 | `exp/smart-wait-1.0` | Smart wait 1.0s vs 1.5s | **NEUTRAL** | Identical performance (6.6 avg steps both) |
+| 74 | `exp/enhanced-adaptive-hints` | Enhanced adaptive hints | **NEUTRAL** | New hints didn't clearly improve vs standard adaptive |
+| 75 | `exp/jpeg-quality-1-v2` | JPEG quality 1 vs 2 | **NEUTRAL** | Identical performance, q1 no benefit over q2 |
+| 76 | `exp/resolution-1120` | Resolution 1120px vs 1344px | **POSITIVE** | -30% tok/step, 100% success both runs, merged |
 
 #### Detailed Experiment Findings
 
@@ -557,6 +567,16 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/temperature-0` | `96ddfd4` | Complete (Exp 64, neutral, not merged) |
 | `exp/compact-action-space` | `4e861b1` | Complete (Exp 65, negative, not merged) |
 | `exp/no-grid-overlay` | `74ef053` | Complete (Exp 66, positive, **merged to main**) |
+| `exp/no-step-budget` | `75067b7` | Complete (Exp 67, neutral, not merged) |
+| `exp/max-tokens-1024` | `df2ae5b` | Complete (Exp 68, negative, not merged) |
+| `exp/max-tokens-2048` | `5b7b28b` | Complete (Exp 69, neutral, not merged) |
+| `exp/history-window-6` | `433573d` | Complete (Exp 70, neutral, not merged) |
+| `exp/no-adaptive-prompt` | `9713ddd` | Complete (Exp 71, negative, not merged) |
+| `exp/smart-wait-0.5` | `7a420b7` | Complete (Exp 72, neutral, not merged) |
+| `exp/smart-wait-1.0` | `d50360c` | Complete (Exp 73, neutral, not merged) |
+| `exp/enhanced-adaptive-hints` | `2d922cf` | Complete (Exp 74, neutral, not merged) |
+| `exp/jpeg-quality-1-v2` | `46fe2da` | Complete (Exp 75, neutral, not merged) |
+| `exp/resolution-1120` | `e7be848` | Complete (Exp 76, positive, **merged to main**) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -850,6 +870,26 @@ Merged to main as default.
 
 **Exp 66 — No Grid Overlay at 1344px** (POSITIVE): Tested removing the coordinate grid overlay entirely. At 1344px resolution, VLM accurately estimates coordinates without grid assistance. No grid: 100% success, 4.6 avg steps (both runs), 20.5K tok/step. Grid: 100% success, 5.4 avg steps, 21.7K tok/step. Grid overlay adds visual noise and tokens without helping at higher resolution. Validated across 2 runs. `show_coordinate_grid` default changed to False. Merged to main.
 
+**Exp 67 — No Step Budget Awareness** (NEUTRAL): Tested disabling the step counter/budget message appended to each VLM request. Run 1: no_budget 4.8 steps vs budget 6.0. Run 2: budget 4.6 vs no_budget 5.4. Results flip between runs, no consistent signal. Keep step_budget_awareness=True.
+
+**Exp 68 — Max Tokens 1024 vs 4096** (NEGATIVE): Tried reducing VLM max_tokens from 4096 to 1024. The Wikipedia Article Scroll task regressed severely (23 steps vs 5), indicating complex tasks need longer reasoning chains. Token budget at 1024 truncates critical reasoning.
+
+**Exp 69 — Max Tokens 2048 vs 4096** (NEUTRAL): Middle ground test. Both configs essentially identical across all tasks. max_tokens doesn't meaningfully impact performance or latency with this VLM proxy setup.
+
+**Exp 70 — History Window 6 vs 10** (NEUTRAL): Tested smaller conversation history (3 exchanges vs 5). Run 1: hw6 better (6.2 vs 8.6 steps). Run 2: hw10 better (6.6 vs 7.0 steps). High per-task variance dominates. Keep max_history_turns=10.
+
+**Exp 71 — No Adaptive Prompt** (NEGATIVE): Removing adaptive task-specific hints caused significant regression: 8.0 vs 5.2 avg steps. Wikipedia Article Scroll: 21 vs 7 steps. The adaptive hints (Ctrl+F for finding sections, Tab for forms, Enter for search) are highly effective. Keep adaptive_prompt=True.
+
+**Exp 72 — Smart Wait 0.5s vs 1.5s** (NEUTRAL): Tested halving the post-action wait time. Run 1: 0.5s better (5.8 vs 6.8 steps). Run 2: 1.5s better (6.2 vs 9.2 steps). 0.5s may capture screenshots before page loads, causing confusion. Keep 1.5s.
+
+**Exp 73 — Smart Wait 1.0s vs 1.5s** (NEUTRAL): Middle ground. Identical performance (6.6 avg steps both configs). Individual task variance swaps between configs. Keep 1.5s default as safer option.
+
+**Exp 74 — Enhanced Adaptive Hints** (NEUTRAL): Added new hints for search result clicking and scroll efficiency. Enhanced vs no_adaptive: 100% vs 80%. But compared to standard adaptive (Exp 71: 5.2 steps), enhanced (6.8 steps) wasn't clearly better. Not merged.
+
+**Exp 75 — JPEG Quality 1 vs 2** (NEUTRAL): Tested minimum JPEG quality. Run 1: q2 6.0 vs q1 5.6. Run 2: q2 7.6 vs q1 7.8. Identical. q1 provides no improvement at already-low q2. Keep q2.
+
+**Exp 76 — Resolution 1120px vs 1344px** (POSITIVE): Reduced VLM image resolution to 1120px. Run 1: 1120px 14,502 tok/step vs 1344px 20,761 (-30%). Run 2: 1120px 14,374 tok/step vs 1344px 20,694 (-30%), with 100% vs 80% success. Massive token reduction with equal or better task performance. `vlm_max_edge` default changed to 1120. Merged to main.
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -880,6 +920,7 @@ Merged to main as default.
 | Compressed system prompt (default) | Exp 63 | `842881d` via merge |
 | system_prompt config option | Exp 63 | `842881d` via merge |
 | No grid overlay (show_coordinate_grid=False) | Exp 66 | `aba0b97` |
+| VLM resolution 1120px (default=1120) | Exp 76 | `636d072` |
 
 ---
 
