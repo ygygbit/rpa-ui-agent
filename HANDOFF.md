@@ -447,6 +447,14 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 50 | `exp/screenshot-diff-stuck` | Screenshot diff stuck detection | **INCONCLUSIVE** | Sandbox timeouts corrupted results, not merged |
 | 51 | `exp/step-delay-0` | Step delay 0.0s (vs 0.5s) | **MILD POSITIVE** | -13% wall time, same steps/success, merged |
 | 52 | `exp/smart-wait-10` | Smart wait 1.0s (vs 1.5s) | **NEGATIVE** | +59% avg steps, Wiki Scroll 6→24, not merged |
+| 53 | `exp/history-window-5` | History window 5 vs 10 | **MIXED** | Wiki Search failed with window 5, high variance, not merged |
+| 54 | `exp/smart-wait-20` | Smart wait 2.0s (vs 1.5s) | **NEUTRAL** | Run 2 showed identical step counts, 1.5s optimal, not merged |
+| 55 | `exp/max-steps-15` | Max steps 15 vs 25 | **NEUTRAL** | Both 100%, steps similar (step budget pressure effect), not merged |
+| 56 | `exp/resolution-1344` | VLM resolution 1344px (vs 1024px) | **STRONG POSITIVE** | **-35% steps, -28% time**, consistent across 2 runs, merged |
+| 57 | `exp/resolution-1600` | VLM resolution 1600px (vs 1344px) | **BROKEN** | VLM API rejects images at 1600px, not merged |
+| 58 | `exp/jpeg-quality-5` | JPEG quality q5 (vs q10) | **POSITIVE** | **-23% tok/step, -26% total tokens**, same success, merged |
+| 59 | `exp/jpeg-quality-2` | JPEG quality q2 (vs q5) | **MILD POSITIVE** | **-13% tok/step, -10% total tokens**, merged |
+| 60 | `exp/jpeg-quality-1` | JPEG quality q1 (vs q2) | **NEGATIVE** | JPEG compression floor reached, +19% steps, not merged |
 
 #### Detailed Experiment Findings
 
@@ -529,6 +537,14 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/screenshot-diff-stuck` | `f8b45a1` | Complete (Exp 50, inconclusive, not merged) |
 | `exp/step-delay-0` | `f7bda32` | Complete (Exp 51, mild positive, **merged to main**) |
 | `exp/smart-wait-10` | `0673d01` | Complete (Exp 52, negative, not merged) |
+| `exp/history-window-5` | `a434b51` | Complete (Exp 53, mixed, not merged) |
+| `exp/smart-wait-20` | `5abe834` | Complete (Exp 54, neutral, not merged) |
+| `exp/max-steps-15` | `30da10c` | Complete (Exp 55, neutral, not merged) |
+| `exp/resolution-1344` | `adbbbfc` | Complete (Exp 56, strong positive, **merged to main**) |
+| `exp/resolution-1600` | `df48ee8` | Complete (Exp 57, broken, not merged) |
+| `exp/jpeg-quality-5` | `20d77c8` | Complete (Exp 58, positive, **merged to main**) |
+| `exp/jpeg-quality-2` | `07b885c` | Complete (Exp 59, mild positive, **merged to main**) |
+| `exp/jpeg-quality-1` | `66eaadd` | Complete (Exp 60, negative, not merged) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -788,6 +804,28 @@ Per-task comparison:
 
 **Exp 52 — Smart Wait 1.0s** (NEGATIVE): Tested reducing smart_wait_delay from 1.5s to 1.0s as a middle ground (Exp 48 showed 0.5s was too short). Results were significantly worse: avg 10.8 vs 6.8 steps (+59%). Wikipedia Article Scroll regressed from 6 to 24 steps — the VLM captured partially-rendered pages and wasted steps waiting/retrying. Confirms that 1.5s is the minimum viable wait for page loads. Not merged.
 
+**Exp 53 — History Window 5** (MIXED): Tested max_history_turns=5 (last 2-3 VLM exchanges) vs default 10. Wikipedia Search failed with window 5 (10→25 max_steps), but Wikipedia Article Scroll improved (22→11). High variance, no systematic benefit. Not merged.
+
+**Exp 54 — Smart Wait 2.0s** (NEUTRAL): Tested smart_wait_delay=2.0 vs 1.5. Run 1 showed improvement (9.4→7.8 avg steps) but validation run showed identical step counts (8.0 vs 7.8). The Run 1 improvement was variance on Wikipedia tasks. 2.0s adds unnecessary overhead on simple tasks. 1.5s remains optimal. Not merged.
+
+**Exp 55 — Max Steps 15** (NEUTRAL): Tested max_steps=15 vs 25. Both 100% success. Simple tasks identical. Wikipedia Scroll improved (18→13) likely due to step_budget_awareness pressure, not the cap itself. 15 is too aggressive for production — harder tasks genuinely need 15-20+ steps. Not merged.
+
+**Exp 56 — VLM Resolution 1344px** (STRONG POSITIVE): Increased vlm_max_edge from 1024px to 1344px. With JPEG q10, the larger images are affordable. Validated across 2 runs:
+- Run 1: 8.0→5.2 avg steps (-35%), 30.1→21.7s (-28%)
+- Run 2: 9.8→5.2 avg steps (-47%), 33.5→21.5s (-36%)
+- 1344px gave identical results both runs (remarkably stable)
+- Wikipedia Search: consistently 4 steps at 1344px vs 10-24 at 1024px
+- Per-step tokens +60% but total tokens comparable due to fewer steps
+Merged to main as default.
+
+**Exp 57 — VLM Resolution 1600px** (BROKEN): Tested near-native 1600px resolution. VLM API rejects all images with "unsupported media type" error. At this resolution, JPEG images likely exceed VLM API size constraints. 1344px confirmed as the ceiling. Not merged.
+
+**Exp 58 — JPEG Quality q5** (POSITIVE): Reduced JPEG quality from q10 to q5 at 1344px resolution. Both 100% success with same step counts (5.0 vs 4.8). Tokens per step reduced 23% (34.9K→26.9K), total tokens reduced 26% (174K→129K). VLM handles q5 with no performance degradation. Merged to main.
+
+**Exp 59 — JPEG Quality q2** (MILD POSITIVE): Further reduced JPEG quality from q5 to q2. Both 100% success with similar steps (5.2 vs 5.4). Tokens per step reduced 13% (27.3K→23.8K), total tokens reduced 10%. Diminishing returns but still a net positive. Merged to main.
+
+**Exp 60 — JPEG Quality q1** (NEGATIVE): Tested absolute minimum JPEG quality q1. Both 100% success but q1 averaged 6.4 steps vs 5.4 for q2 (+19%). Tokens per step were identical (24.4K vs 23.8K) — hit JPEG compression floor. The degraded image quality hurt Wikipedia Scroll (9→14 steps) with no token benefit. q2 confirmed as the quality floor. Not merged.
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -812,6 +850,9 @@ Per-task comparison:
 | Grid spacing 400px (default=400) | Exp 43 | `e1dcb8d` via merge |
 | Prompt text aligned to 400px grid | Exp 46 | `f5db71a` via merge |
 | Step delay 0.0s (default=0.0) | Exp 51 | `f7bda32` via merge |
+| VLM resolution 1344px (default=1344) | Exp 56 | `adbbbfc` via merge |
+| JPEG quality q5 (default=5) | Exp 58 | `20d77c8` via merge |
+| JPEG quality q2 (default=2) | Exp 59 | `07b885c` via merge |
 
 ---
 
