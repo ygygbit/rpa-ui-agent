@@ -481,6 +481,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 84 | `exp/no-auto-navigate-v2` | auto_navigate=False | **NEUTRAL** | 8.6 vs 7.6, ~1 extra step for URL entry |
 | 85 | `exp/max-steps-15-v2` | max_steps=15 vs 25 | **NEGATIVE** | 4/5 (80%) success, Wikipedia Scroll failed at 15 |
 | 86 | `exp/strict-coord-validation` | coordinate_validation=off | **NEUTRAL** | 9.4 vs 7.6, validation catches bad clicks |
+| 87 | `exp/smart-wait-2.0` | smart_wait_delay=2.0 vs 1.5 | **NEUTRAL** | Run 1: 5.4 vs 7.6, Run 2: 11.4 vs 8.6. Inconsistent |
+| 88 | `exp/cumulative-validation-6` | Cumulative validation round 6 | **VALIDATION** | 10/10 100%, 16K tok/step, stable |
+| 89 | `exp/uncompressed-prompt-v2` | WebP format vs JPEG q2 | **NEUTRAL** | Same steps, WebP cheaper for simple pages, expensive for text |
 
 #### Detailed Experiment Findings
 
@@ -597,6 +600,9 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/no-auto-navigate-v2` | `ae6743b` | Complete (Exp 84, neutral, not merged) |
 | `exp/max-steps-15-v2` | `2e7b342` | Complete (Exp 85, negative, not merged) |
 | `exp/strict-coord-validation` | `05925fb` | Complete (Exp 86, neutral, not merged) |
+| `exp/smart-wait-2.0` | `3adabf6` | Complete (Exp 87, neutral, not merged) |
+| `exp/cumulative-validation-6` | `320dce0` | Complete (Exp 88, validation) |
+| `exp/uncompressed-prompt-v2` | `c7bbced` | Complete (Exp 89, neutral, not merged) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -929,6 +935,12 @@ Merged to main as default.
 **Exp 85 — Max Steps 15 vs 25** (NEGATIVE): Reduced step cap from 25 to 15. Wikipedia Article Scroll failed at 15 steps (4/5 = 80% vs 100%). DDG Click Result improved (5 vs 14 — urgency effect). Complex tasks need the 25-step budget.
 
 **Exp 86 — Coordinate Validation Off** (NEUTRAL): Disabled chrome-zone coordinate validation. Avg steps 9.4 vs 7.6. DDG Click Result: 18 vs 5 steps. Validation catches misclicks in browser chrome zone and saves recovery steps. Confirms relaxed validation provides value.
+
+**Exp 87 — Smart Wait 2.0s vs 1.5s** (NEUTRAL): Tested longer page load wait. Run 1: sw2.0 much better (5.4 vs 7.6 avg steps, -29%). Run 2: sw1.5 better (8.6 vs 11.4). High variance, results flip between runs. Inconsistent.
+
+**Exp 88 — Cumulative Validation Round 6** (VALIDATION): 10 diverse tasks with all current defaults. 10/10 (100%) success. 16,127 tok/step. Historical progression: 36K → 23K → 24K → 24K → 15K → 16K tok/step. Performance stable. Wikipedia Section Nav used all 25 steps but completed.
+
+**Exp 89 — WebP Format vs JPEG q2** (NEUTRAL): Added WebP image format support. WebP q2: lower tok/step for DDG pages (~10K vs 13K) but higher for Wikipedia (~27K vs 18K). Avg steps identical (5.4 vs 5.6). WebP encoding varies by content type. Net neutral.
 
 #### Improvements Merged to Main
 
