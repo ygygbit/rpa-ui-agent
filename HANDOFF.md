@@ -495,6 +495,8 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 98 | `exp/smart-wait-05-v2` | smart_wait_delay=0.5 vs 1.5 | **NEGATIVE** | 4/5 (80%) vs 5/5, 11.6 vs 8.6 steps, DDG Click fails with 0.5s |
 | 99 | `exp/no-adaptive-prompt-v2` | adaptive_prompt=False vs True | **NEUTRAL** | 4/5 vs 5/5, 9.6 vs 8.0 steps, hints help DDG Click and Wikipedia Scroll |
 | 100 | `exp/no-auto-navigate` | auto_navigate=False vs True | **STRONG POSITIVE** | 4/5 vs 5/5, 14.8 vs 7.8 steps, -47% tokens, confirms auto_navigate value |
+| 101 | `exp/smart-wait-10-v2` | smart_wait_delay=1.0 vs 1.5 | **NEGATIVE** | 4/5 (80%) vs 5/5, 14.4 vs 6.2 steps, full sweep confirms 1.5s optimal |
+| 102 | `exp/cumulative-validation-8` | Cumulative validation round 8 | **VALIDATION** | 10/10 100%, 16K tok/step, stable x4 |
 
 #### Detailed Experiment Findings
 
@@ -625,6 +627,8 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/smart-wait-05-v2` | `2f559b4` | Complete (Exp 98, negative, not merged) |
 | `exp/no-adaptive-prompt-v2` | `da4c6b6` | Complete (Exp 99, neutral, not merged) |
 | `exp/no-auto-navigate` | `b5a31a5` | Complete (Exp 100, strong positive, already default) |
+| `exp/smart-wait-10-v2` | `c93812c` | Complete (Exp 101, negative, not merged) |
+| `exp/cumulative-validation-8` | `2500943` | Complete (Exp 102, validation, 10/10 100%) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -985,6 +989,10 @@ Merged to main as default.
 **Exp 99 — Adaptive Prompt Off vs On** (NEUTRAL): adaptive_prompt adds task-specific hints (Ctrl+F for finding sections, Tab for forms, Enter for search, URL nav tips, Wikipedia ToC). ap_on: 5/5 (100%), 8.0 avg steps, 122K tok, 29.6s. ap_off: 4/5 (80%), 9.6 avg steps, 133K tok, 34.6s. DDG Click Result hit max_steps without hints. Wikipedia Article Scroll much faster with hints (13 vs 5 steps — ToC/Ctrl+F hint likely helped). Marginal benefit, keeping as default.
 
 **Exp 100 — Auto-Navigate Off vs On** (STRONG POSITIVE): auto_navigate pre-loads target URL via sandbox API, saving VLM from having to Ctrl+L/type/Enter. nav_on: 5/5 (100%), 7.8 avg steps, 113K tok, 28.9s. nav_off: 4/5 (80%), 14.8 avg steps, 212K tok, 50.9s. Saves ~7 steps/task (-47%), halves token cost. DDG Click Result fails without it. Wikipedia Search 24 vs 4 steps. Confirms auto_navigate is one of the most impactful features (already default).
+
+**Exp 101 — Smart Wait 1.0s vs 1.5s** (NEGATIVE): Testing 1.0s smart wait — between Exp 98's 0.5s (negative) and default 1.5s. sw1.5: 5/5 (100%), 6.2 avg steps, 94K tok, 27.5s. sw1.0: 4/5 (80%), 14.4 avg steps, 215K tok, 53.0s. DDG Click Result max_steps again. Wikipedia Search 12 vs 4, Article Scroll 23 vs 5. Full smart_wait sweep complete: 0s (risky), 0.5s (negative), 1.0s (negative), 1.5s (optimal).
+
+**Exp 102 — Cumulative Validation Round 8** (VALIDATION): 10 diverse tasks, all defaults. **10/10 (100%)** — including historically difficult tasks (Wikipedia Main Page 18 steps, Random 11 steps, DDG Click Result 13 steps). 16K tok/step, stable for 4th consecutive validation. Historical: 36K -> 23K -> 24K -> 24K -> 15K -> 16K -> 16K -> 16K.
 
 #### Improvements Merged to Main
 
