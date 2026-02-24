@@ -471,6 +471,10 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 74 | `exp/enhanced-adaptive-hints` | Enhanced adaptive hints | **NEUTRAL** | New hints didn't clearly improve vs standard adaptive |
 | 75 | `exp/jpeg-quality-1-v2` | JPEG quality 1 vs 2 | **NEUTRAL** | Identical performance, q1 no benefit over q2 |
 | 76 | `exp/resolution-1120` | Resolution 1120px vs 1344px | **POSITIVE** | -30% tok/step, 100% success both runs, merged |
+| 77 | `exp/cumulative-validation-5` | Cumulative validation round 5 | **VALIDATION** | 10/10 100%, 15K tok/step (-35% from val 4) |
+| 78 | `exp/retry-guidance` | COT reasoning prompt | **NEUTRAL** | Same steps, DDG improved but Wikipedia regressed |
+| 79 | `exp/no-history` | No history (window=1) | **NEUTRAL** | More steps (9.4 vs 6.8), VLM needs context |
+| 80 | `exp/resolution-1008` | Resolution 1008px vs 1120px | **NEUTRAL** | Lower tok/step but more steps, net neutral |
 
 #### Detailed Experiment Findings
 
@@ -577,6 +581,10 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/enhanced-adaptive-hints` | `2d922cf` | Complete (Exp 74, neutral, not merged) |
 | `exp/jpeg-quality-1-v2` | `46fe2da` | Complete (Exp 75, neutral, not merged) |
 | `exp/resolution-1120` | `e7be848` | Complete (Exp 76, positive, **merged to main**) |
+| `exp/cumulative-validation-5` | `70c61c1` | Complete (Exp 77, validation) |
+| `exp/retry-guidance` | `d5215bf` | Complete (Exp 78, neutral, not merged) |
+| `exp/no-history` | `f779f96` | Complete (Exp 79, neutral, not merged) |
+| `exp/resolution-1008` | `872d2b2` | Complete (Exp 80, neutral, not merged) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -889,6 +897,14 @@ Merged to main as default.
 **Exp 75 — JPEG Quality 1 vs 2** (NEUTRAL): Tested minimum JPEG quality. Run 1: q2 6.0 vs q1 5.6. Run 2: q2 7.6 vs q1 7.8. Identical. q1 provides no improvement at already-low q2. Keep q2.
 
 **Exp 76 — Resolution 1120px vs 1344px** (POSITIVE): Reduced VLM image resolution to 1120px. Run 1: 1120px 14,502 tok/step vs 1344px 20,761 (-30%). Run 2: 1120px 14,374 tok/step vs 1344px 20,694 (-30%), with 100% vs 80% success. Massive token reduction with equal or better task performance. `vlm_max_edge` default changed to 1120. Merged to main.
+
+**Exp 77 — Cumulative Validation Round 5** (VALIDATION): Ran 10 diverse tasks with all current defaults (1120px, q2, no grid, compressed prompt). 10/10 (100%) success. tok/step dropped from ~24K (validation 4) to ~15K (-35%). Historical progression: 36K → 23K → 24K → 24K → 15K tok/step. Demonstrates the compounding benefit of compressed prompt + no grid + 1120px resolution.
+
+**Exp 78 — COT Reasoning Prompt** (NEUTRAL): Added explicit chain-of-thought reasoning encouragement to system prompt ("think through: current state, target element, coordinates"). Both 100% success, same 6.6 avg steps. COT improved DDG Click Result (5 vs 12 steps) but regressed Wikipedia Scroll (14 vs 8). Net neutral.
+
+**Exp 79 — No History (window=1)** (NEUTRAL): Tested sending only the current screenshot with no conversation history. Increased avg steps (9.4 vs 6.8) — VLM loses track of multi-step progress without context. Total tokens increase despite lower per-step tokens because more steps are needed.
+
+**Exp 80 — Resolution 1008px vs 1120px** (NEUTRAL): Another step down in resolution. 1008px: 12K tok/step (-19%) but 10.0 avg steps (vs 7.2). More total tokens despite lower per-step. Quality loss at 1008px causes enough VLM confusion to add steps. 1120px is the sweet spot between token efficiency and task accuracy.
 
 #### Improvements Merged to Main
 
