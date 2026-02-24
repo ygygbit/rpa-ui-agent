@@ -484,6 +484,10 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 87 | `exp/smart-wait-2.0` | smart_wait_delay=2.0 vs 1.5 | **NEUTRAL** | Run 1: 5.4 vs 7.6, Run 2: 11.4 vs 8.6. Inconsistent |
 | 88 | `exp/cumulative-validation-6` | Cumulative validation round 6 | **VALIDATION** | 10/10 100%, 16K tok/step, stable |
 | 89 | `exp/uncompressed-prompt-v2` | WebP format vs JPEG q2 | **NEUTRAL** | Same steps, WebP cheaper for simple pages, expensive for text |
+| 90 | `exp/jpeg-quality-5-v2` | JPEG quality 5 vs 2 | **NEUTRAL** | Run 1: q5 better (4.6 vs 7.8), Run 2: q2 better. High variance |
+| 91 | `exp/scroll-hint-prompt` | Scroll amount hint in prompt | **NEGATIVE** | 10.6 vs 4.6 avg steps, scroll hint caused regression |
+| 92 | `exp/history-window-6-v2` | max_history_turns=6 vs 10 | **NEUTRAL** | 7.2 vs 5.8 steps, shorter window loses context on multi-step |
+| 93 | `exp/cot-prompt` | Chain-of-thought structured prompt | **NEGATIVE** | 8.0 vs 5.6 steps, output tokens +123%, verbosity without accuracy |
 
 #### Detailed Experiment Findings
 
@@ -603,6 +607,10 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/smart-wait-2.0` | `3adabf6` | Complete (Exp 87, neutral, not merged) |
 | `exp/cumulative-validation-6` | `320dce0` | Complete (Exp 88, validation) |
 | `exp/uncompressed-prompt-v2` | `c7bbced` | Complete (Exp 89, neutral, not merged) |
+| `exp/jpeg-quality-5-v2` | `d883fe3` | Complete (Exp 90, neutral, not merged) |
+| `exp/scroll-hint-prompt` | `bedcb97` | Complete (Exp 91, negative, not merged) |
+| `exp/history-window-6-v2` | `f84d3f6` | Complete (Exp 92, neutral, not merged) |
+| `exp/cot-prompt` | `ecfc199` | Complete (Exp 93, negative, not merged) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -941,6 +949,14 @@ Merged to main as default.
 **Exp 88 — Cumulative Validation Round 6** (VALIDATION): 10 diverse tasks with all current defaults. 10/10 (100%) success. 16,127 tok/step. Historical progression: 36K → 23K → 24K → 24K → 15K → 16K tok/step. Performance stable. Wikipedia Section Nav used all 25 steps but completed.
 
 **Exp 89 — WebP Format vs JPEG q2** (NEUTRAL): Added WebP image format support. WebP q2: lower tok/step for DDG pages (~10K vs 13K) but higher for Wikipedia (~27K vs 18K). Avg steps identical (5.4 vs 5.6). WebP encoding varies by content type. Net neutral.
+
+**Exp 90 — JPEG Quality 5 vs 2** (NEUTRAL): Testing slightly higher quality (q5) to improve VLM accuracy. Run 1: q5 much better (4.6 vs 7.8 steps, -30% total tokens, Wikipedia Scroll 5 vs 13 steps). Run 2: q2 better (5.2 vs 5.6). Results flipped between runs — high variance, no consistent winner.
+
+**Exp 91 — Scroll Amount Hint in Prompt** (NEGATIVE): Changed scroll example from amount=3 to amount=5, added hint "use 5+ for long pages". Baseline 4.6 avg steps vs scroll_hint 10.6 avg steps. Scroll hint caused significant regression — DDG Click Result took 14 vs 5 steps, Wikipedia Article Scroll took 24 vs 5. The prompt change appears to confuse the VLM.
+
+**Exp 92 — History Window 6 vs 10** (NEUTRAL/SLIGHT NEGATIVE): Reduced conversation history from 10 messages (5 exchanges) to 6 messages (3 exchanges). hw10: 5.8 avg steps, 90K avg tokens. hw6: 7.2 avg steps, 108K avg tokens. Shorter window saves tok/step (15K vs 15.5K) but causes more steps on multi-step tasks (Wikipedia: 16 vs 9 steps). Net negative.
+
+**Exp 93 — Chain-of-Thought Structured Prompt** (NEGATIVE): Replaced "Brief description" reasoning with structured "1) SCREEN: what you see. 2) GOAL: next step. 3) ACTION: what to do" format. 8.0 avg steps vs 5.6 baseline. Output tokens +123% (1,135 vs 508). The VLM already reasons well with brief descriptions — forcing structure adds verbosity without improving accuracy.
 
 #### Improvements Merged to Main
 
