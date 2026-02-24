@@ -434,6 +434,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 37 | `exp/jpeg-quality-25` | JPEG quality q25 (vs q50) | **STRONG POSITIVE** | -38% tokens/step, -49% steps, same 100%, merged |
 | 38 | `exp/jpeg-quality-10` | JPEG quality q10 (vs q25) | **POSITIVE** | -49% tokens/step, same steps, same 100%, merged |
 | 39 | `exp/resolution-896` | 896px resolution (vs 1024px) | **NEGATIVE** | avg 8.6→13.8 steps (+60%), not merged |
+| 40 | `exp/grid-spacing-200` | Grid spacing 200px (vs 100px) | **POSITIVE** | -30% steps, -38% tokens, -10% tok/step, merged |
 
 #### Detailed Experiment Findings
 
@@ -503,6 +504,7 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/jpeg-quality-25` | `71e356c` | Complete (Exp 37, strong positive, **merged to main**) |
 | `exp/jpeg-quality-10` | `e115c93` | Complete (Exp 38, positive, **merged to main**) |
 | `exp/resolution-896` | `71e9b1d` | Complete (Exp 39, negative, not merged) |
+| `exp/grid-spacing-200` | `b62dad7` | Complete (Exp 40, positive, **merged to main**) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -704,6 +706,22 @@ JPEG quality progression summary:
 
 **Exp 39 — Resolution 896px** (NEGATIVE): Tested 896px (midpoint between failed 768px and working 1024px) with q10 JPEG. Both configs 100% success but 896px averaged 13.8 steps vs 8.6 for 1024px (+60%). Wikipedia Search went 10→21 steps, DuckDuckGo Click Result went 6→17. Per-step tokens only saved -6% (24.3K vs 25.8K). The smaller image makes it harder for the VLM to identify small UI elements and read grid labels accurately, leading to more trial-and-error steps. 1024px is confirmed as the optimal resolution — 768px, 896px both degrade accuracy. Not merged.
 
+**Exp 40 — Grid Spacing 200px** (POSITIVE): Tested 200px grid spacing vs current 100px default. With 200px spacing the grid has ~50% fewer lines and labels — less visual clutter on the screenshot and smaller image payload. The VLM must interpolate between grid lines more, but the labels are more readable. Both configs 100% success (5/5). 200px spacing achieved **-30% avg steps** (9.2→6.4), **-38% total tokens**, **-10% tokens/step** (27.5K→24.7K), and **-30% wall time** (36.7s→25.9s). Wikipedia Article Scroll improved 18→12 steps, Wikipedia Search 13→5. The sparser grid reduces visual noise that may confuse the VLM, while still providing enough reference points for accurate coordinate estimation. Changed default grid_spacing from 100 to 200. Merged to main.
+
+| Config | Success | Avg Steps | Avg Tok/Step | Avg Time |
+|--------|---------|-----------|-------------|----------|
+| grid100 | 100% (5/5) | 9.2 | 27,542 | 36.7s |
+| **grid200** | **100% (5/5)** | **6.4** | **24,695** | **25.9s** |
+
+Per-task comparison:
+| Task | g100 Steps | g200 Steps | Delta | Tok/Step Delta |
+|------|-----------|-----------|-------|----------------|
+| DuckDuckGo Search | 4 | 4 | 0 | -14% |
+| Wikipedia Search | 13 | 5 | **-8** | -4% |
+| Multi-Step Navigation | 5 | 6 | +1 | -16% |
+| DuckDuckGo Click Result | 6 | 5 | -1 | -15% |
+| Wikipedia Article Scroll | 18 | 12 | **-6** | -3% |
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -722,6 +740,7 @@ JPEG quality progression summary:
 | JPEG quality reduced from q75 to q50 (default=50) | Exp 36 | `01b4d9a` via merge |
 | JPEG quality reduced from q50 to q25 (default=25) | Exp 37 | `71e356c` via merge |
 | JPEG quality reduced from q25 to q10 (default=10) | Exp 38 | `e115c93` via merge |
+| Grid spacing 200px (default=200) | Exp 40 | `b62dad7` via merge |
 
 ---
 
