@@ -84,7 +84,7 @@ class AgentConfig:
 
     # Execution settings
     max_steps: int = 50
-    step_delay: float = 0.5  # Delay between steps
+    step_delay: float = 0.0  # Delay between steps (0 = VLM call provides natural pacing)
     screenshot_scale: float = 1.0  # Screenshot scaling (1.0 = no scaling for accurate coordinates)
     screenshot_quality: int = 50  # JPEG quality (1-100, lower = faster)
     save_screenshots: bool = True
