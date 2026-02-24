@@ -1,0 +1,161 @@
+[
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "q10",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 112456,
+    "total_output_tokens": 553,
+    "wall_time_seconds": 18.3,
+    "per_step_input_tokens": [
+      24758,
+      24846,
+      24579,
+      38273
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "q10",
+    "outcome": "completed",
+    "step_count": 6,
+    "total_input_tokens": 257982,
+    "total_output_tokens": 614,
+    "wall_time_seconds": 24.3,
+    "per_step_input_tokens": [
+      43170,
+      43605,
+      43799,
+      43708,
+      43860,
+      39840
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "q10",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 145442,
+    "total_output_tokens": 804,
+    "wall_time_seconds": 21.0,
+    "per_step_input_tokens": [
+      24786,
+      24943,
+      24603,
+      37665,
+      33445
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "q10",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 137778,
+    "total_output_tokens": 537,
+    "wall_time_seconds": 21.9,
+    "per_step_input_tokens": [
+      24804,
+      24921,
+      24435,
+      38018,
+      25600
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "q10",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 217704,
+    "total_output_tokens": 710,
+    "wall_time_seconds": 23.1,
+    "per_step_input_tokens": [
+      43246,
+      43798,
+      44065,
+      43176,
+      43419
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Search",
+    "config_label": "q5",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 91989,
+    "total_output_tokens": 379,
+    "wall_time_seconds": 16.4,
+    "per_step_input_tokens": [
+      21026,
+      21136,
+      20819,
+      29008
+    ]
+  },
+  {
+    "task_name": "Wikipedia Search",
+    "config_label": "q5",
+    "outcome": "completed",
+    "step_count": 4,
+    "total_input_tokens": 125469,
+    "total_output_tokens": 757,
+    "wall_time_seconds": 18.1,
+    "per_step_input_tokens": [
+      31385,
+      32018,
+      32230,
+      29836
+    ]
+  },
+  {
+    "task_name": "Multi-Step Navigation",
+    "config_label": "q5",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 116501,
+    "total_output_tokens": 462,
+    "wall_time_seconds": 19.4,
+    "per_step_input_tokens": [
+      20986,
+      21161,
+      20890,
+      27905,
+      25559
+    ]
+  },
+  {
+    "task_name": "DuckDuckGo Click Result",
+    "config_label": "q5",
+    "outcome": "completed",
+    "step_count": 5,
+    "total_input_tokens": 112910,
+    "total_output_tokens": 534,
+    "wall_time_seconds": 22.9,
+    "per_step_input_tokens": [
+      21046,
+      21181,
+      20819,
+      28515,
+      21349
+    ]
+  },
+  {
+    "task_name": "Wikipedia Article Scroll",
+    "config_label": "q5",
+    "outcome": "completed",
+    "step_count": 6,
+    "total_input_tokens": 197833,
+    "total_output_tokens": 1125,
+    "wall_time_seconds": 26.4,
+    "per_step_input_tokens": [
+      31469,
+      32061,
+      32309,
+      32019,
+      32326,
+      37649
+    ]
+  }
+]
