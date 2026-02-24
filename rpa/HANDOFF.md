@@ -445,6 +445,8 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 48 | `exp/smart-wait-05` | Smart wait 0.5s (vs 1.5s) | **NEGATIVE** | +28% avg steps, VLM sees unloaded pages, not merged |
 | 49 | `exp/cumulative-validation-3` | Cumulative validation round 3 | **100% (10/10)** | 5.8 avg steps on 10 diverse tasks, validates all 21 improvements |
 | 50 | `exp/screenshot-diff-stuck` | Screenshot diff stuck detection | **INCONCLUSIVE** | Sandbox timeouts corrupted results, not merged |
+| 51 | `exp/step-delay-0` | Step delay 0.0s (vs 0.5s) | **MILD POSITIVE** | -13% wall time, same steps/success, merged |
+| 52 | `exp/smart-wait-10` | Smart wait 1.0s (vs 1.5s) | **NEGATIVE** | +59% avg steps, Wiki Scroll 6→24, not merged |
 
 #### Detailed Experiment Findings
 
@@ -525,6 +527,8 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/smart-wait-05` | `ce4df18` | Complete (Exp 48, negative, not merged) |
 | `exp/cumulative-validation-3` | `73ffa59` | Complete (Exp 49, 100% 10/10, **merged to main**) |
 | `exp/screenshot-diff-stuck` | `f8b45a1` | Complete (Exp 50, inconclusive, not merged) |
+| `exp/step-delay-0` | `f7bda32` | Complete (Exp 51, mild positive, **merged to main**) |
+| `exp/smart-wait-10` | `0673d01` | Complete (Exp 52, negative, not merged) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -780,6 +784,10 @@ Per-task comparison:
 
 **Exp 50 — Screenshot Diff Stuck Detection** (INCONCLUSIVE): Added image-based stuck detection comparing consecutive screenshots using mean pixel difference. Feature triggered correctly 3 times on Wikipedia Search with appropriate warnings. However, sandbox timeouts corrupted the test run (4/10 tasks failed to timeout errors unrelated to the feature). Not merged pending cleaner testing.
 
+**Exp 51 — Step Delay 0.0s** (MILD POSITIVE): Removed the 0.5s base delay between non-navigation steps. VLM API calls take 2-4s per step, providing natural pacing. Both configs achieved 100% success with similar step counts (6.8 vs 6.6 avg). Wall time reduced from 33.7s to 29.4s (-13%). Merged to main — `step_delay` default changed from 0.5 to 0.0.
+
+**Exp 52 — Smart Wait 1.0s** (NEGATIVE): Tested reducing smart_wait_delay from 1.5s to 1.0s as a middle ground (Exp 48 showed 0.5s was too short). Results were significantly worse: avg 10.8 vs 6.8 steps (+59%). Wikipedia Article Scroll regressed from 6 to 24 steps — the VLM captured partially-rendered pages and wasted steps waiting/retrying. Confirms that 1.5s is the minimum viable wait for page loads. Not merged.
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -803,6 +811,7 @@ Per-task comparison:
 | Sliding window default=10 | Exp 42 | `b5c91d4` via merge |
 | Grid spacing 400px (default=400) | Exp 43 | `e1dcb8d` via merge |
 | Prompt text aligned to 400px grid | Exp 46 | `f5db71a` via merge |
+| Step delay 0.0s (default=0.0) | Exp 51 | `f7bda32` via merge |
 
 ---
 
