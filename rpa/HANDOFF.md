@@ -8,7 +8,7 @@
 
 This is a Vision-Language Model (VLM) based RPA agent that automates GUI tasks by:
 1. Capturing screenshots from a Docker sandbox (1920x1080 Linux + Chrome)
-2. Resizing to 1344x756, drawing a coordinate grid with original-pixel labels
+2. Resizing to 1344x756 and encoding as JPEG q2
 3. Sending to VLM for analysis (Claude via Anthropic API or custom endpoint)
 4. Parsing JSON actions from VLM response
 5. Executing mouse/keyboard actions via XTEST (python-xlib)
@@ -455,6 +455,12 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 58 | `exp/jpeg-quality-5` | JPEG quality q5 (vs q10) | **POSITIVE** | **-23% tok/step, -26% total tokens**, same success, merged |
 | 59 | `exp/jpeg-quality-2` | JPEG quality q2 (vs q5) | **MILD POSITIVE** | **-13% tok/step, -10% total tokens**, merged |
 | 60 | `exp/jpeg-quality-1` | JPEG quality q1 (vs q2) | **NEGATIVE** | JPEG compression floor reached, +19% steps, not merged |
+| 61 | `exp/cumulative-validation-4` | Cumulative validation round 4 | **VALIDATION** | 10/10 (100%), 7.4 avg steps, 24K tok/step, all 26 improvements validated |
+| 62 | `exp/grid-spacing-300` | Grid spacing 300 vs 400 at 1344px | **NEUTRAL** | Identical results, denser grid provides no improvement |
+| 63 | `exp/compressed-prompt` | Compressed system prompt | **POSITIVE** | -10% tok/step, same success, validated 2 runs, merged |
+| 64 | `exp/temperature-0` | VLM temperature 0.0 vs 0.1 | **NEUTRAL** | DDG Click Result regressed (15 steps), deterministic stuck loop |
+| 65 | `exp/compact-action-space` | Compact action space format | **NEGATIVE** | DDG Click Result regressed (19 steps), verbose format helps VLM |
+| 66 | `exp/no-grid-overlay` | No grid overlay at 1344px | **POSITIVE** | -8% tok/step, -22% time, VLM doesn't need grid at 1344px, merged |
 
 #### Detailed Experiment Findings
 
@@ -545,6 +551,12 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/jpeg-quality-5` | `20d77c8` | Complete (Exp 58, positive, **merged to main**) |
 | `exp/jpeg-quality-2` | `07b885c` | Complete (Exp 59, mild positive, **merged to main**) |
 | `exp/jpeg-quality-1` | `66eaadd` | Complete (Exp 60, negative, not merged) |
+| `exp/cumulative-validation-4` | `513ef98` | Complete (Exp 61, validation, 10/10 100%) |
+| `exp/grid-spacing-300` | `34b466d` | Complete (Exp 62, neutral, not merged) |
+| `exp/compressed-prompt` | `842881d` | Complete (Exp 63, positive, **merged to main**) |
+| `exp/temperature-0` | `96ddfd4` | Complete (Exp 64, neutral, not merged) |
+| `exp/compact-action-space` | `4e861b1` | Complete (Exp 65, negative, not merged) |
+| `exp/no-grid-overlay` | `74ef053` | Complete (Exp 66, positive, **merged to main**) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -826,6 +838,18 @@ Merged to main as default.
 
 **Exp 60 — JPEG Quality q1** (NEGATIVE): Tested absolute minimum JPEG quality q1. Both 100% success but q1 averaged 6.4 steps vs 5.4 for q2 (+19%). Tokens per step were identical (24.4K vs 23.8K) — hit JPEG compression floor. The degraded image quality hurt Wikipedia Scroll (9→14 steps) with no token benefit. q2 confirmed as the quality floor. Not merged.
 
+**Exp 61 — Cumulative Validation Round 4** (VALIDATION): Validated all 26 merged improvements together on 10 diverse tasks (including GitHub Explore, DuckDuckGo Images/News, Wikipedia Languages). **10/10 (100%) success**, 7.4 avg steps, 24K tok/step. Comparison with prior rounds: Round 1 (Exp 32) 80% 8.5 steps ~45K tok/step → Round 2 (Exp 42) 90% 7.7 steps ~42K → Round 3 (Exp 49) 100% 6.1 steps ~36K → Round 4 (Exp 61) 100% 7.4 steps ~24K. Avg steps slightly higher due to harder task set, but tok/step dropped 33% from resolution+compression optimizations.
+
+**Exp 62 — Grid Spacing 300 at 1344px** (NEUTRAL): Tested denser grid (300px vs 400px) at 1344px resolution. Both 100% success, gs400 6.6 avg steps vs gs300 6.4 avg steps. Tok/step nearly identical (24,384 vs 24,633). The denser grid provides no measurable improvement at 1344px. Not merged.
+
+**Exp 63 — Compressed System Prompt** (POSITIVE): Created a compressed version of the system prompt — same behavioral rules but 73% smaller (~501 vs ~1858 tokens). Both 100% success. Tok/step dropped 10% (23,247→20,843 on validation). Steps same or fewer. Added `system_prompt` config option and `GUI_AGENT_COMPRESSED` prompt. Validated across 2 runs. Merged to main.
+
+**Exp 64 — VLM Temperature 0.0** (NEUTRAL): Tested fully deterministic temperature=0.0 vs current 0.1. Both 100% success but DuckDuckGo Click Result regressed to 15 steps at t=0.0 (vs 6 at t=0.1) — deterministic behavior causes stuck loops. Stochastic t=0.1 provides useful randomness for recovery. Not merged.
+
+**Exp 65 — Compact Action Space** (NEGATIVE): Compressed operator action_space to single-line JSON examples without section headers. DDG Click Result regressed to 19 steps (vs 7 with verbose). The verbose format with section headers ("Direct Click", "Mouse Movement", etc.) and descriptions helps VLM understand action semantics. Not merged.
+
+**Exp 66 — No Grid Overlay at 1344px** (POSITIVE): Tested removing the coordinate grid overlay entirely. At 1344px resolution, VLM accurately estimates coordinates without grid assistance. No grid: 100% success, 4.6 avg steps (both runs), 20.5K tok/step. Grid: 100% success, 5.4 avg steps, 21.7K tok/step. Grid overlay adds visual noise and tokens without helping at higher resolution. Validated across 2 runs. `show_coordinate_grid` default changed to False. Merged to main.
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -853,6 +877,9 @@ Merged to main as default.
 | VLM resolution 1344px (default=1344) | Exp 56 | `adbbbfc` via merge |
 | JPEG quality q5 (default=5) | Exp 58 | `20d77c8` via merge |
 | JPEG quality q2 (default=2) | Exp 59 | `07b885c` via merge |
+| Compressed system prompt (default) | Exp 63 | `842881d` via merge |
+| system_prompt config option | Exp 63 | `842881d` via merge |
+| No grid overlay (show_coordinate_grid=False) | Exp 66 | `aba0b97` |
 
 ---
 
