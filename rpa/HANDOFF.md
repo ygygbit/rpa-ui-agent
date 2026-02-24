@@ -435,6 +435,11 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 38 | `exp/jpeg-quality-10` | JPEG quality q10 (vs q25) | **POSITIVE** | -49% tokens/step, same steps, same 100%, merged |
 | 39 | `exp/resolution-896` | 896px resolution (vs 1024px) | **NEGATIVE** | avg 8.6→13.8 steps (+60%), not merged |
 | 40 | `exp/grid-spacing-200` | Grid spacing 200px (vs 100px) | **POSITIVE** | -30% steps, -38% tokens, -10% tok/step, merged |
+| 41 | `exp/prompt-grid-200-alignment` | Prompt text "200px" alignment | **NEUTRAL** | VLM reads actual labels regardless, merged for correctness |
+| 42 | `exp/sliding-window-revisited` | Sliding window 10 (with q10 images) | **NEUTRAL** | Lower token growth on long tasks, default set to 10, merged |
+| 43 | `exp/grid-spacing-400` | Grid spacing 400px (vs 200px) | **POSITIVE** | -38% steps, -39% tokens, -36% time, merged |
+| 44 | `exp/no-grid` | No grid overlay at all | **NEUTRAL** | High variance, no systematic benefit, not merged |
+| 45 | `exp/minimal-prompt` | Minimal prompt (~600 tok vs ~1.9K) | **NEUTRAL/NEGATIVE** | +24% steps, Article Scroll 6 to 14, not merged |
 
 #### Detailed Experiment Findings
 
@@ -505,6 +510,11 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/jpeg-quality-10` | `e115c93` | Complete (Exp 38, positive, **merged to main**) |
 | `exp/resolution-896` | `71e9b1d` | Complete (Exp 39, negative, not merged) |
 | `exp/grid-spacing-200` | `b62dad7` | Complete (Exp 40, positive, **merged to main**) |
+| `exp/prompt-grid-200-alignment` | `ce63b75` | Complete (Exp 41, neutral, **merged to main** for correctness) |
+| `exp/sliding-window-revisited` | `b5c91d4` | Complete (Exp 42, neutral, **merged to main** default=10) |
+| `exp/grid-spacing-400` | `e1dcb8d` | Complete (Exp 43, positive, **merged to main**) |
+| `exp/no-grid` | `c1bc20d` | Complete (Exp 44, neutral, not merged) |
+| `exp/minimal-prompt` | `b7bf410` | Complete (Exp 45, neutral/negative, not merged) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -722,6 +732,21 @@ Per-task comparison:
 | DuckDuckGo Click Result | 6 | 5 | -1 | -15% |
 | Wikipedia Article Scroll | 18 | 12 | **-6** | -3% |
 
+**Exp 41 — Prompt-Grid Alignment** (NEUTRAL): Updated prompt text from "100 pixels" to "200 pixels" to match actual grid spacing. Both configs 100% success. Mismatched slightly better on steps (8.2 vs 9.8) but within normal variance. The VLM reads actual grid labels regardless of what the prompt text says. Merged for correctness (prompt should match reality) but no performance impact.
+
+**Exp 42 — Sliding Window Revisited** (NEUTRAL): Re-tested sliding window (max_history_turns=10 vs unlimited) with q10 JPEG and 200px grid. Previously neutral in Exp 11 because images dominated token cost. Now images are ~25K/step. Both 100% success, avg steps similar (8.6 vs 8.2). Per-step token growth lower with window: Wikipedia Scroll +1.1K vs +5.3K. Default set to 10 for longer-task efficiency. Merged.
+
+**Exp 43 — Grid Spacing 400px** (POSITIVE): Even sparser grid: only ~6 lines (4 vert + 2 horiz) vs ~14 lines at 200px. Both 100% success. 400px achieved **-38% avg steps** (11.2 to 7.0), **-39% tokens**, **-36% time**. Wikipedia Search 25 to 8, Article Scroll 17 to 13. The ultra-sparse grid reduces visual noise further while still providing enough reference points. Default changed to 400px. Merged.
+
+| Config | Success | Avg Steps | Avg Tokens | Avg Time |
+|--------|---------|-----------|------------|----------|
+| grid200 | 100% (5/5) | 11.2 | 265,525 | 44.8s |
+| **grid400** | **100% (5/5)** | **7.0** | **161,508** | **28.5s** |
+
+**Exp 44 — No Grid Overlay** (NEUTRAL): Tested removing grid entirely. Both 100% success. Avg steps similar (9.4 vs 9.0) but high per-task variance: no grid worse on Wikipedia Search (7 vs 22) but better on Article Scroll (23 vs 10). No systematic pattern — the VLM can work without the grid but doesn't consistently benefit from its removal. Grid kept as default. Not merged.
+
+**Exp 45 — Minimal Prompt** (NEUTRAL/NEGATIVE): Reduced system prompt from ~1.9K tokens to ~600 tokens by removing grid-reading instructions, browser layout hints, and verbose strategy sections. Both 100% success but minimal averaged more steps (7.2 vs 5.8, +24%). Wikipedia Article Scroll regressed 6 to 14 steps without detailed Ctrl+F/strategy hints. The full prompt's instructions provide measurable value. Not merged.
+
 #### Improvements Merged to Main
 
 | Change | Source | Commit |
@@ -741,6 +766,9 @@ Per-task comparison:
 | JPEG quality reduced from q50 to q25 (default=25) | Exp 37 | `71e356c` via merge |
 | JPEG quality reduced from q25 to q10 (default=10) | Exp 38 | `e115c93` via merge |
 | Grid spacing 200px (default=200) | Exp 40 | `b62dad7` via merge |
+| Prompt text aligned to 200px grid | Exp 41 | `ce63b75` via merge |
+| Sliding window default=10 | Exp 42 | `b5c91d4` via merge |
+| Grid spacing 400px (default=400) | Exp 43 | `e1dcb8d` via merge |
 
 ---
 
