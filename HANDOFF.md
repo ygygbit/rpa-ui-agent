@@ -475,6 +475,12 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 78 | `exp/retry-guidance` | COT reasoning prompt | **NEUTRAL** | Same steps, DDG improved but Wikipedia regressed |
 | 79 | `exp/no-history` | No history (window=1) | **NEUTRAL** | More steps (9.4 vs 6.8), VLM needs context |
 | 80 | `exp/resolution-1008` | Resolution 1008px vs 1120px | **NEUTRAL** | Lower tok/step but more steps, net neutral |
+| 81 | `exp/no-action-feedback` | action_feedback=False | **NEGATIVE** | 9.8 vs 7.2 avg steps, VLM needs action tracking |
+| 82 | `exp/temperature-0-v2` | Temperature 0.0 vs 0.1 | **NEUTRAL** | 8.6 vs 8.0, mixed task-by-task results |
+| 83 | `exp/no-step-budget-v2` | step_budget_awareness=False | **NEUTRAL** | 7.2 vs 7.6, within noise |
+| 84 | `exp/no-auto-navigate-v2` | auto_navigate=False | **NEUTRAL** | 8.6 vs 7.6, ~1 extra step for URL entry |
+| 85 | `exp/max-steps-15-v2` | max_steps=15 vs 25 | **NEGATIVE** | 4/5 (80%) success, Wikipedia Scroll failed at 15 |
+| 86 | `exp/strict-coord-validation` | coordinate_validation=off | **NEUTRAL** | 9.4 vs 7.6, validation catches bad clicks |
 
 #### Detailed Experiment Findings
 
@@ -585,6 +591,12 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/retry-guidance` | `d5215bf` | Complete (Exp 78, neutral, not merged) |
 | `exp/no-history` | `f779f96` | Complete (Exp 79, neutral, not merged) |
 | `exp/resolution-1008` | `872d2b2` | Complete (Exp 80, neutral, not merged) |
+| `exp/no-action-feedback` | `0fc1170` | Complete (Exp 81, negative, not merged) |
+| `exp/temperature-0-v2` | `3ed99e3` | Complete (Exp 82, neutral, not merged) |
+| `exp/no-step-budget-v2` | `a43ce0b` | Complete (Exp 83, neutral, not merged) |
+| `exp/no-auto-navigate-v2` | `ae6743b` | Complete (Exp 84, neutral, not merged) |
+| `exp/max-steps-15-v2` | `2e7b342` | Complete (Exp 85, negative, not merged) |
+| `exp/strict-coord-validation` | `05925fb` | Complete (Exp 86, neutral, not merged) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -905,6 +917,18 @@ Merged to main as default.
 **Exp 79 — No History (window=1)** (NEUTRAL): Tested sending only the current screenshot with no conversation history. Increased avg steps (9.4 vs 6.8) — VLM loses track of multi-step progress without context. Total tokens increase despite lower per-step tokens because more steps are needed.
 
 **Exp 80 — Resolution 1008px vs 1120px** (NEUTRAL): Another step down in resolution. 1008px: 12K tok/step (-19%) but 10.0 avg steps (vs 7.2). More total tokens despite lower per-step. Quality loss at 1008px causes enough VLM confusion to add steps. 1120px is the sweet spot between token efficiency and task accuracy.
+
+**Exp 81 — No Action Feedback** (NEGATIVE): Disabled success feedback messages after each action. Avg steps increased from 7.2 to 9.8 (+36%). Wikipedia Search: 10 vs 4 steps. DDG Click Result: 21 vs 10 steps. The VLM relies on action feedback to track what it already did. Essential feature.
+
+**Exp 82 — Temperature 0.0 vs 0.1** (NEUTRAL): Tested fully deterministic temperature=0.0. Avg steps 8.6 vs 8.0 (within noise). DDG Click improved (5 vs 13) but Wikipedia Scroll regressed (21 vs 12). Mixed task-by-task results.
+
+**Exp 83 — No Step Budget Awareness** (NEUTRAL): Disabled step budget messages. Avg steps 7.2 vs 7.6 — no_budget slightly better but within noise. Step budget info adds minimal tokens and doesn't clearly help or hurt.
+
+**Exp 84 — No Auto-Navigate** (NEUTRAL): Disabled URL auto-navigation. Avg steps 8.6 vs 7.6. Auto-navigate saves ~1 step for URL entry in simple tasks. But Wikipedia Scroll flipped (8 vs 19 steps) — high variance. Marginal benefit.
+
+**Exp 85 — Max Steps 15 vs 25** (NEGATIVE): Reduced step cap from 25 to 15. Wikipedia Article Scroll failed at 15 steps (4/5 = 80% vs 100%). DDG Click Result improved (5 vs 14 — urgency effect). Complex tasks need the 25-step budget.
+
+**Exp 86 — Coordinate Validation Off** (NEUTRAL): Disabled chrome-zone coordinate validation. Avg steps 9.4 vs 7.6. DDG Click Result: 18 vs 5 steps. Validation catches misclicks in browser chrome zone and saves recovery steps. Confirms relaxed validation provides value.
 
 #### Improvements Merged to Main
 
