@@ -488,6 +488,10 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | 91 | `exp/scroll-hint-prompt` | Scroll amount hint in prompt | **NEGATIVE** | 10.6 vs 4.6 avg steps, scroll hint caused regression |
 | 92 | `exp/history-window-6-v2` | max_history_turns=6 vs 10 | **NEUTRAL** | 7.2 vs 5.8 steps, shorter window loses context on multi-step |
 | 93 | `exp/cot-prompt` | Chain-of-thought structured prompt | **NEGATIVE** | 8.0 vs 5.6 steps, output tokens +123%, verbosity without accuracy |
+| 94 | `exp/temperature-04` | Temperature 0.4 vs 0.1 | **NEUTRAL** | 6.2 vs 6.6 steps, within noise margin |
+| 95 | `exp/history-window-14` | max_history_turns=14 vs 10 | **NEUTRAL** | 7.0 vs 6.4 steps, extra context doesn't help |
+| 96 | `exp/cumulative-validation-7` | Cumulative validation round 7 | **VALIDATION** | 9/10 90%, 16K tok/step, stable |
+| 97 | `exp/no-smart-wait` | smart_wait=False vs True | **NEUTRAL** | 7.2 vs 7.4 steps, -21% wall time but stuck loop risk |
 
 #### Detailed Experiment Findings
 
@@ -611,6 +615,10 @@ Ran 7 systematic A/B experiments to test UI-TARS-inspired improvements against b
 | `exp/scroll-hint-prompt` | `bedcb97` | Complete (Exp 91, negative, not merged) |
 | `exp/history-window-6-v2` | `f84d3f6` | Complete (Exp 92, neutral, not merged) |
 | `exp/cot-prompt` | `ecfc199` | Complete (Exp 93, negative, not merged) |
+| `exp/temperature-04` | `3aee334` | Complete (Exp 94, neutral, not merged) |
+| `exp/history-window-14` | `0644593` | Complete (Exp 95, neutral, not merged) |
+| `exp/cumulative-validation-7` | `9abda8f` | Complete (Exp 96, validation) |
+| `exp/no-smart-wait` | `61e39be` | Complete (Exp 97, neutral, not merged) |
 
 #### Experiments 8-35: Hard Tasks, Robustness, and Validation
 
@@ -957,6 +965,14 @@ Merged to main as default.
 **Exp 92 — History Window 6 vs 10** (NEUTRAL/SLIGHT NEGATIVE): Reduced conversation history from 10 messages (5 exchanges) to 6 messages (3 exchanges). hw10: 5.8 avg steps, 90K avg tokens. hw6: 7.2 avg steps, 108K avg tokens. Shorter window saves tok/step (15K vs 15.5K) but causes more steps on multi-step tasks (Wikipedia: 16 vs 9 steps). Net negative.
 
 **Exp 93 — Chain-of-Thought Structured Prompt** (NEGATIVE): Replaced "Brief description" reasoning with structured "1) SCREEN: what you see. 2) GOAL: next step. 3) ACTION: what to do" format. 8.0 avg steps vs 5.6 baseline. Output tokens +123% (1,135 vs 508). The VLM already reasons well with brief descriptions — forcing structure adds verbosity without improving accuracy.
+
+**Exp 94 — Temperature 0.4 vs 0.1** (NEUTRAL): Testing higher temperature for creative error recovery. t0.1: 6.6 avg steps, 101K tok. t0.4: 6.2 avg steps, 94K tok. Very close results. DDG Click Result worse with t0.4 (13 vs 9) but Wikipedia better (5 vs 8). Within noise margin.
+
+**Exp 95 — History Window 14 vs 10** (NEUTRAL): Testing more conversation history (7 vs 5 exchanges). hw10: 6.4 avg steps, 94K tok. hw14: 7.0 avg steps, 107K tok. Extra context doesn't consistently help — DDG Click worse (12 vs 7), Wikipedia better (8 vs 12). Net neutral.
+
+**Exp 96 — Cumulative Validation Round 7** (VALIDATION): 10 diverse tasks, all defaults. 9/10 (90%) — Wikipedia Main Page hit max_steps. 16K tok/step, stable. Historical: 36K -> 23K -> 24K -> 24K -> 15K -> 16K -> 16K.
+
+**Exp 97 — Smart Wait Off vs On** (NEUTRAL): smart_wait=False: 7.2 avg steps, 107K tok, 22.7s. smart_wait=True: 7.4 avg steps, 111K tok, 28.6s. Disabling smart wait saves 21% wall time with same success rate. However, one Multi-Step Nav task hit stuck loop without wait. Wall time gain attractive but reliability concern.
 
 #### Improvements Merged to Main
 
