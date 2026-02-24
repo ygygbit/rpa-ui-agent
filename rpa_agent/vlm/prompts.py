@@ -22,17 +22,17 @@ class SystemPrompts:
 ## COORDINATE ACCURACY — THIS IS CRITICAL
 
 ### Reading Coordinates from the Grid Overlay
-The screenshot has a **coordinate grid overlay** with labeled lines every 100 pixels. You MUST use these grid lines to determine coordinates precisely:
+The screenshot has a **coordinate grid overlay** with labeled lines every 200 pixels. You MUST use these grid lines to determine coordinates precisely:
 
 1. **Find the nearest grid lines** to the target element — both horizontal (labeled on left/right edges) and vertical (labeled on top/bottom edges)
 2. **Read the grid labels** — they show exact pixel values (e.g., "400" on the left means y=400, "900" on the top means x=900)
-3. **Interpolate between grid lines** — if the element is halfway between y=400 and y=500 lines, the y coordinate is ~450
-4. **Thicker lines mark every 500px** — use these as major landmarks (x=500, x=1000, x=1500 and y=500, y=1000)
+3. **Interpolate between grid lines** — if the element is halfway between y=400 and y=600 lines, the y coordinate is ~500
+4. **Thicker lines mark every 1000px** — use these as major landmarks (x=1000 and y=1000)
 5. **Yellow crosshairs** appear at grid intersections — use these as precise reference points
 
 ### Common Browser Layout (Chrome at 1920x1080)
-- **Browser chrome (tabs, address bar)**: y ≈ 0–140 (above first grid line at y=100)
-- **Web page content START**: y ≈ 140+ (at or below the y=100/y=200 grid lines)
+- **Browser chrome (tabs, address bar)**: y ≈ 0–140 (above first grid line at y=200)
+- **Web page content START**: y ≈ 140+ (at or below the y=200 grid line)
 - **Page center vertically**: y ≈ 500 (at the y=500 major grid line)
 - **Page center horizontally**: x ≈ 960 (between x=900 and x=1000 grid lines)
 
@@ -164,17 +164,17 @@ The ONLY correct sequence for URL navigation is:
 ## COORDINATE ACCURACY — THIS IS CRITICAL
 
 ### Reading Coordinates from the Grid Overlay
-The screenshot has a **coordinate grid overlay** with labeled lines every 100 pixels. You MUST use these grid lines to determine coordinates precisely:
+The screenshot has a **coordinate grid overlay** with labeled lines every 200 pixels. You MUST use these grid lines to determine coordinates precisely:
 
 1. **Find the nearest grid lines** to the target element — both horizontal (labeled on left/right edges) and vertical (labeled on top/bottom edges)
 2. **Read the grid labels** — they show exact pixel values (e.g., "400" on the left means y=400, "900" on the top means x=900)
-3. **Interpolate between grid lines** — if the element is halfway between y=400 and y=500 lines, the y coordinate is ~450
-4. **Thicker lines mark every 500px** — use these as major landmarks (x=500, x=1000, x=1500 and y=500, y=1000)
+3. **Interpolate between grid lines** — if the element is halfway between y=400 and y=600 lines, the y coordinate is ~500
+4. **Thicker lines mark every 1000px** — use these as major landmarks (x=1000 and y=1000)
 5. **Yellow crosshairs** appear at grid intersections — use these as precise reference points
 
 ### Common Browser Layout (Chrome at 1920x1080)
-- **Browser chrome (tabs, address bar)**: y ≈ 0–140 (above first grid line at y=100)
-- **Web page content START**: y ≈ 140+ (at or below the y=100/y=200 grid lines)
+- **Browser chrome (tabs, address bar)**: y ≈ 0–140 (above first grid line at y=200)
+- **Web page content START**: y ≈ 140+ (at or below the y=200 grid line)
 - **Page center vertically**: y ≈ 500 (at the y=500 major grid line)
 - **Page center horizontally**: x ≈ 960 (between x=900 and x=1000 grid lines)
 
