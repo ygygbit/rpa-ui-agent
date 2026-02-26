@@ -50,6 +50,13 @@ def run(
         "--base-url",
         help="VLM API base URL"
     ),
+    api_key: Optional[str] = typer.Option(
+        None,
+        "--api-key",
+        "-k",
+        help="API key (defaults to ANTHROPIC_API_KEY env var)",
+        envvar="ANTHROPIC_API_KEY"
+    ),
     model: str = typer.Option(
         DEFAULT_MODEL,
         "--model",
@@ -75,6 +82,7 @@ def run(
     # Create configuration
     vlm_config = VLMConfig(
         base_url=base_url,
+        api_key=api_key or "",
         model=model
     )
 
@@ -521,6 +529,13 @@ def sandbox_run(
         help=f"Model name. Available: {', '.join(AVAILABLE_MODELS)}",
         callback=model_callback
     ),
+    api_key: Optional[str] = typer.Option(
+        None,
+        "--api-key",
+        "-k",
+        help="API key (defaults to ANTHROPIC_API_KEY env var)",
+        envvar="ANTHROPIC_API_KEY"
+    ),
     base_url: str = typer.Option(
         "http://localhost:23333/api/anthropic",
         "--base-url",
@@ -576,6 +591,7 @@ def sandbox_run(
     # Create configuration with sandbox mode
     vlm_config = VLMConfig(
         base_url=base_url,
+        api_key=api_key or "",
         model=model
     )
 
