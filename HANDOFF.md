@@ -1266,3 +1266,408 @@ python -m rpa_agent.cli sandbox down
 6. **XTEST typing interval**: 30ms between keystrokes (Chrome autocomplete resilience)
 7. **MiniWoB++ Screen Size**: 160x210 pixels (original), 640x840 (4x scaled for MiniWoB benchmark)
 8. **MiniWoB++ Episode Timeout**: 120 seconds (increased from default 10s)
+
+---
+
+## OSWorld Benchmark
+
+### Overview
+OSWorld is a NeurIPS 2024 benchmark for evaluating GUI agents on real Ubuntu desktop tasks. It uses QEMU/KVM VMs inside Docker containers, providing full desktop environments with Chrome, GIMP, LibreOffice, etc.
+
+**Paper**: "OSWorld: Benchmarking Multimodal Agents for Open-Ended Tasks in Real Computer Environments"
+
+### Setup
+- **WSL2 Ubuntu** with KVM support (`/dev/kvm` available)
+- **Docker** via Docker Desktop WSL integration (socket symlinked to Ubuntu distro)
+- **OSWorld repo**: `/home/osworld` (cloned in WSL2 Ubuntu)
+- **Python venv**: `/home/osworld/.venv` with `pip install -e '.[lite]'`
+- **Docker image**: `happysixd/osworld-docker` (pulled, VM image downloading ~11.4GB)
+- **VLM endpoint**: `http://172.19.240.1:23333/api/anthropic` (Windows host from WSL2 via gateway IP)
+
+### Architecture
+
+```
+Windows Host                    WSL2 Ubuntu + Docker
++--------------------+         +------------------------------+
+| VLM Endpoint       |         | OSWorld Docker Container     |
+| :23333             |<--HTTP--| run_rpa.py + RPAAgent        |
+|                    |         |   +-- QEMU/KVM Ubuntu VM     |
+|                    |         |   |   +-- Chrome, GIMP, etc. |
+|                    |         |   |   +-- pyautogui server   |
+|                    |         |   +-- Port 5000 (server)     |
+|                    |         |   +-- Port 8006 (VNC)        |
++--------------------+         +------------------------------+
+```
+
+### Files
+- `osworld_adapter/rpa_agent.py` → also at `/home/osworld/mm_agents/rpa_agent.py` (WSL)
+  - `RPAAgent` class implementing OSWorld's `predict(instruction, obs) -> (response, [actions])` interface
+  - Sends **full-resolution 1920x1080 PNG** screenshots (no resize) for 1:1 coordinate mapping
+  - Calls Anthropic API at custom endpoint (claude-opus-4.6-fast model)
+  - Parses JSON action response, translates to pyautogui code strings
+  - Sliding window conversation history (max_trajectory_length=10)
+  - Stuck-loop detection with coordinate tolerance (~10px) and broader history pattern analysis
+  - `click_and_type` compound action: click → Ctrl+A → type (avoids focus loss between steps)
+  - Force-break mechanism: auto-FAIL after 4+ consecutive repeats or 4+/8 clicks in same 30px area
+- `osworld_adapter/run_rpa.py` → also at `/home/osworld/run_rpa.py` (WSL)
+  - Standalone OSWorld benchmark runner
+  - Loads task configs, creates DesktopEnv with Docker provider
+  - Runs agent on each task, evaluates, saves results
+  - Supports `--subset small/all`, `--domain chrome`, `--task_ids UUID...`
+
+### Running
+
+```bash
+# SSH into Ubuntu WSL
+wsl -d Ubuntu
+
+# Activate OSWorld venv
+cd /home/osworld && source .venv/bin/activate
+
+# Run test_small (39 tasks, no a11y, ~2.5 hours)
+python run_rpa.py --vlm_url 'http://172.19.240.1:23333/api/anthropic' \
+  --subset small --max_steps 35 --env_wait 30 --sleep_after_execution 2.0 --no_a11y
+
+# Run full benchmark (368 tasks, no a11y, ~30 hours)
+# Use tmux to keep alive:
+tmux new-session -d -s bench "cd /home/osworld && source .venv/bin/activate && \
+  python run_rpa.py --vlm_url 'http://172.19.240.1:23333/api/anthropic' \
+  --subset all --max_steps 35 --env_wait 30 --sleep_after_execution 2.0 --no_a11y \
+  2>&1 | tee run_rpa_full.log"
+
+# Monitor progress
+grep 'Running:' /home/osworld/run_rpa.log | tail -5
+
+# Find current VNC port to preview VM
+docker ps --format '{{.Ports}}' | head -1 | grep -oP '\d+(?=->8006)'
+```
+
+### Test Suites
+- `test_small.json`: 39 tasks — chrome(4), gimp(2), calc(3), impress(2), writer(2), multi_apps(17), os(2), thunderbird(2), vlc(2), vs_code(3)
+- `test_all.json`: Full benchmark across all domains
+
+### OSWorld Results
+
+| Run | Subset | Tasks | Successes | Rate | Max Steps | Time | Notes |
+|-----|--------|-------|-----------|------|-----------|------|-------|
+| Exp 106 | test_small | 9/39 (killed) | 0 | 0.0% | 35 | ~3hr | Baseline: full-res PNG, no a11y tree |
+| Exp 107/108 | test_small | 26/39 (killed) | 12 | 48.0% | 35 | ~10hr+ | Resize 1344px + a11y tree + coord scaling |
+| **Exp 109** | **test_small** | **39/39** | **22** | **56.4%** | **35** | **2h21m** | **No a11y tree — 10x faster, higher accuracy** |
+| **Exp 110** | **test_all** | **368** | **197** | **53.5%** | **35** | **23h57m** | **Full benchmark, no a11y — COMPLETE** |
+| **Exp 111** | **failed retry** | **163** | **34** | **20.9%** | **50** | **16h** | **Rerun Exp 110 failures with 50 steps — COMPLETE** |
+| **Combined** | **110+111** | **368** | **231** | **62.8%** | **50** | **40h** | **Best combined score: 62.8%** |
+
+**Exp 106** (killed after 9 tasks, 2026-02-24):
+- Full-resolution 1920x1080 PNG screenshots with 1:1 coordinate mapping
+- Token usage extremely high: 130K-1M+ per step due to full PNG screenshots
+- VLM coordinate accuracy poor on small icons at full resolution
+- 0/9 tasks succeeded, killed after ~3 hours
+
+**Exp 107/108** (killed at task 26/39, 2026-02-24):
+- Resize screenshots to 1344px max edge (1920x1080 → 1344x756), scale coords × 1.429
+- Include accessibility tree (truncated to 3000 chars) alongside screenshots
+- **Bottleneck discovered**: a11y tree fetch takes 30-90 seconds per step (vs ~3s for VLM call)
+- 12/25 scored tasks passed (48.0%), killed to restart without a11y
+- Token usage: ~160K-560K per step
+
+**Exp 109** (COMPLETE, 2026-02-25, 39 tasks in 2h21m):
+- **Key change**: Disabled accessibility tree (`--no_a11y`) — 10x speedup (3min/task vs 20min/task)
+- Same 1344px resize + coord scaling, just no a11y tree
+- **Per-domain results**:
+  - chrome: 3/4 (75%) — "find discussions with most replies" failed
+  - gimp: **2/2 (100%)** — brightness + color vibrancy both passed (was 0/2 with a11y!)
+  - libreoffice_calc: **3/3 (100%)** — formulas, sums, unique names
+  - libreoffice_impress: 1/2 (50%) — cover page passed, strikethrough failed
+  - libreoffice_writer: **2/2 (100%)** — line spacing + alignment (was 1/2 with a11y)
+  - multi_apps: 6/17 (35%) — weakest domain, 3 tasks broken by Google Drive setup errors
+  - os: 1/2 (50%) — trash recovery passed, SSH user creation failed
+  - thunderbird: 0/2 (0%) — both email account tasks failed
+  - vlc: **2/2 (100%)** — play video + convert to MP3
+  - vs_code: 2/3 (67%) — open project + set wrap length passed, find-replace failed
+- **Excluding 3 broken Google Drive tasks: 22/36 = 61.1%**
+- **Observation**: Removing a11y tree IMPROVED accuracy (cleaner prompt, less noise) AND was 10x faster
+
+**Exp 110** (COMPLETE, 2026-02-25/26, 368 tasks in 23h57m):
+- **Full OSWorld benchmark** with `--no_a11y`, `--max_steps 35`, `--env_wait 30`, `--sleep_after_execution 2.0`
+- **Overall: 197/368 (53.5%)** — average score 0.534
+- **Per-domain results**:
+  - vlc: **16/17 (94%)** — strongest domain
+  - thunderbird: **12/15 (80%)** — email tasks
+  - os: **19/24 (79%)** — system tasks
+  - vs_code: **16/22 (73%)** — editor tasks
+  - libreoffice_writer: 13/23 (57%)
+  - gimp: 14/26 (54%)
+  - libreoffice_calc: 25/47 (53%)
+  - chrome: 24/46 (52%)
+  - libreoffice_impress: 23/47 (49%)
+  - multi_apps: **35/101 (35%)** — weakest domain (cross-app coordination is hardest)
+- **Score progression during run**: started ~55% (first 100 tasks), gradually settled to 53.5%
+- **Run command**: `python run_rpa.py --vlm_url http://172.19.240.1:23333/api/anthropic --subset all --max_steps 35 --env_wait 30 --sleep_after_execution 2.0 --no_a11y`
+- **Results saved**: `/home/osworld/results/rpa_agent_20260225_065859/summary.json`
+
+**Exp 111** (COMPLETE, 2026-02-27/28, 163 retried tasks in 16h):
+- **Retried all 163 failed tasks from Exp 110** (excluding 8 Google Drive infra errors) with `--max_steps 50` (was 35)
+- **Retry score: 34/163 (20.9%)** — recovered 34 previously-failed tasks
+- **Combined score (Exp 110+111): 231/368 (62.8%)** — up from 53.5%
+- **Per-domain combined results**:
+  - vlc: 16/17 (**94.1%**)
+  - os: 20/24 (**83.3%**)
+  - thunderbird: 12/15 (80.0%)
+  - vs_code: 17/22 (77.3%)
+  - libreoffice_writer: 16/23 (**69.6%**)
+  - gimp: 17/26 (65.4%)
+  - libreoffice_calc: 30/47 (63.8%)
+  - chrome: 29/46 (63.0%)
+  - libreoffice_impress: 29/47 (61.7%)
+  - multi_apps: 45/101 (**44.6%**) — still weakest but improved from 34.7%
+- **Retry success by domain**: writer 3/10 (30%), gimp 3/12 (25%), impress 6/24 (25%), chrome 5/22 (22.7%), calc 5/22 (22.7%), os 1/5 (20%), multi_apps 10/58 (17.2%), vs_code 1/6 (16.7%), thunderbird 0/3 (0%), vlc 0/1 (0%)
+- **Key insight**: 34 tasks recovered purely by giving more steps — no code/prompt changes needed
+- **Run command**: `python run_rpa.py --vlm_url http://172.19.240.1:23333/api/anthropic --task_ids_file exp111_retry_ids.txt --max_steps 50 --env_wait 30 --sleep_after_execution 2.0 --no_a11y`
+- **Results saved**: `/home/osworld/results/rpa_agent_20260227_074923/summary.json`
+
+### Exp 110 Failure Analysis (171 failed tasks)
+
+**Methodology**: Every task with score=0.0 was categorized by root cause. Tasks with partial scores (e.g., 0.96, 0.88) are counted as successes. Infra errors (Google Drive setup) are separated from agent failures.
+
+#### Overall Failure Breakdown
+
+| Category | Count | % of Failures | Description |
+|----------|-------|--------------|-------------|
+| wrong_answer | 76 | 44.4% | Agent said DONE but produced incorrect result |
+| max_steps | 42 | 24.6% | Ran out of 35 steps before completing |
+| infra_error | 9 | 5.3% | Google Drive setup errors, missing files (not agent's fault) |
+| navigation_failure | 20 | 11.7% | Could not find the right menu/button/UI element |
+| complex_multi_step | 18 | 10.5% | Task requires too many coordinated steps across apps |
+| unsupported_action | 6 | 3.5% | Task requires capabilities the agent lacks |
+
+**Excluding 9 infra errors**: 162 genuine agent failures out of 359 genuine tasks = **54.9% success rate**.
+
+---
+
+#### Per-Domain Failure Analysis
+
+##### Chrome (22 failures / 46 total = 52.2% success)
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| wrong_answer | 12 | Reopen closed tab (2 steps, wrong approach); change Chrome profile username to Thomas; disable 2023 Chrome UI; auto-delete browsing data; navigate to password manager for Etsy; disable dark mode via flags; find community discussions with most replies; browse Nike jerseys; drip coffee makers filter; spider-man toys sort; clear YouTube browsing history selectively; find Diamond dates |
+| max_steps | 2 | Find large car rental in Zurich sorted by price (complex form filling); men's shirts with 50%+ discount (too many filter steps) |
+| navigation_failure | 5 | FAQ about ticket delivery (wrong page); Mumbai-Stockholm flight (wrong date entry); Boston Logan car rental sorted by seats; book Charlie Card appointment (date picker); find Dota 2 DLCs |
+| complex_multi_step | 2 | Seattle-NY flight with miles filter; Dublin-Vienna one way for 2 adults |
+| infra_error | 1 | Task b070486d had no instruction (error status) |
+
+**Common patterns**:
+- **Flight/travel booking websites**: Agent struggles with complex date pickers, passenger selectors, and multi-step filter UIs (6 failures). These sites have dynamic dropdowns and non-standard form controls.
+- **Chrome flags/hidden settings**: Tasks requiring chrome://flags or obscure settings paths fail because VLM doesn't know the exact navigation path (disable 2023 UI, auto-delete browsing data).
+- **E-commerce filtering**: Multi-filter product searches (Nike jerseys + price, coffee makers + sale + price + color) require many sequential filter selections that exhaust steps or produce wrong results.
+- **Selective history deletion**: Clearing only YouTube entries from browsing history requires precise per-item detection and deletion.
+
+**Suggestions**:
+1. Add domain-specific hints for travel booking sites (date picker patterns, passenger selector clicks).
+2. For Chrome settings tasks, add a "try chrome://settings/search?q=KEYWORD" approach before visual navigation.
+3. For e-commerce, teach the agent to use URL parameters or search filters more aggressively.
+
+##### GIMP (12 failures / 26 total = 53.8% success)
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| wrong_answer | 4 | Select yellow triangle and center it; make background transparent; shift text box left; CMYK mode conversion |
+| max_steps | 4 | Change color theme to "Blue"; download HKU logo via GIMP; convert PNG to SVG by GIMP; convert RAW to JPEG by GIMP |
+| unsupported_action | 3 | Trim video in GIMP (wrong tool); batch process brightness (needs Script-Fu); enhance low-res to high-res without size increase (impossible) |
+| navigation_failure | 1 | Remove left dock in GIMP |
+
+**Common patterns**:
+- **Impossible/wrong-tool tasks**: Three tasks ask GIMP to do things it cannot do well (trim video, batch process, enhance resolution without size increase). The agent wastes steps attempting impossible operations.
+- **GIMP menu navigation**: GIMP's deeply nested menus (Filters > Light and Shadow > ...) cause navigation failures. The agent often clicks the wrong menu item.
+- **Format conversion limitations**: Converting to SVG or from RAW requires specific plugins/procedures the agent doesn't know.
+- **Precision object manipulation**: Selecting specific layers/objects and moving them precisely (yellow triangle, text box) fails because the VLM cannot accurately identify overlapping elements.
+
+**Suggestions**:
+1. For impossible tasks, teach the agent to recognize and declare "DONE - not possible with this tool" earlier.
+2. Add GIMP-specific keyboard shortcut hints (e.g., Script-Fu console for batch operations).
+3. For layer/object selection, use GIMP's layer panel rather than clicking on canvas.
+
+##### LibreOffice Calc (22 failures / 47 total = 53.2% success)
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| wrong_answer | 12 | Revenue calculation with pivot table; pivot table for Invoice No counts; create clustered column chart; two pivot tables for product/channel; Gross profit + Year_Profit column; annual percentage changes; rename sheets with specific names; reorder columns; concatenate with headers; maturity date calculation; period rate with green highlight; sort then create line chart |
+| max_steps | 8 | Sparkline charts; fill missing total rows/columns; hide N/A rows; highlight weekends red; change decimal separator to comma; calculate totals+growth+two charts; demographic profile with three pivot tables; calculate ages from birthdays |
+| complex_multi_step | 2 | Represent numbers in Millions/Billions columns; Profit column (CGOS typo confusion) |
+
+**Common patterns**:
+- **Pivot tables**: 4 failures involving pivot table creation. The agent struggles with LibreOffice Calc's pivot table dialog (selecting fields, placing in rows/columns/data areas).
+- **Chart creation**: 4 failures on chart tasks. Setting correct chart types, data ranges, and titles through the chart wizard is error-prone.
+- **Complex formulas**: Tasks requiring multi-step formula logic (percentage changes, maturity dates, conditional formatting) often produce wrong formulas.
+- **Formatting operations**: Highlighting specific cells (weekends red, green font for max value) requires precise cell selection and format application across many cells, which exhausts steps.
+- **Column/row manipulation**: Reordering columns, filling ranges, hiding rows by condition all involve many sequential operations.
+
+**Suggestions**:
+1. For pivot tables, consider using the terminal to manipulate the file with Python (openpyxl/pandas) instead of the GUI.
+2. For chart tasks, teach specific click sequences for LibreOffice chart wizard.
+3. For bulk formatting, use Find & Replace with format options or macros.
+4. Increase max_steps to 50 for calc-domain tasks (many legitimately need more steps).
+
+##### LibreOffice Impress (24 failures / 47 total = 49.0% success)
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| wrong_answer | 14 | Strikethrough on lines; duplicate slides in alternating order; set slides to portrait; change slide number color to red; enable auto-save 3min; add note same as title + bold; purple background + note "APP"; purple background + add title to note; name title "Online Shopping" same color; change table first row text; align textboxes across 3 slides; bold+underline on slide 1; set title color black+underline on slides 2,3,5; move picture top + underline textboxes |
+| max_steps | 6 | Blue background on all slides; insert 6 images on 6 blank slides; underline content + dark red 2 font color; set font color yellow/red/green on three textboxes; set titles black + delete personal info on slide 4; add bullet point content |
+| navigation_failure | 2 | Change first textbox font sizes on slide 14; slide notes panel access |
+| complex_multi_step | 2 | Set slides upright (portrait); adjust picture heights on slides 3,4,6 respectively |
+
+**Common patterns**:
+- **Background color changes**: 5 failures involve setting slide background color. The agent struggles to find Slide > Slide Properties > Background in LibreOffice Impress, or gets confused by the color picker dialog.
+- **Multi-slide operations**: Tasks requiring changes across multiple slides (underline on 3 slides, set colors on 3 slides, adjust 3 pictures) exhaust steps because each slide requires navigating, selecting, and modifying.
+- **Text formatting in slides**: Applying formatting (strikethrough, underline, font color) to specific text elements in slides is error-prone because clicking selects the wrong text box or doesn't enter edit mode.
+- **Notes panel**: Adding notes to slides requires finding and clicking the notes area at the bottom, which the VLM sometimes doesn't identify.
+- **Slide properties dialogs**: Portrait/landscape, auto-save intervals, and other settings are in non-obvious menu locations.
+
+**Suggestions**:
+1. For background changes, add a hint: "Slide menu > Slide Properties > Background tab" or right-click slide > Slide Properties.
+2. For multi-slide operations, teach the agent to use "Select All" (Ctrl+A) when possible, or process slides sequentially more efficiently.
+3. For text formatting, ensure the agent double-clicks to enter edit mode, then Ctrl+A to select all text in the box.
+
+##### LibreOffice Writer (10 failures / 23 total = 56.5% success)
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| wrong_answer | 7 | H2O subscript; strikethrough on last paragraph; word colors (red for vowels, blue for consonants); separate sentences with blank lines; convert comma-separated text to table; add cross-reference citation; different line spacing per paragraph |
+| max_steps | 2 | Change font to Times New Roman throughout; share document for real-time editing |
+| unsupported_action | 1 | Real-time collaborative editing (not supported in LibreOffice without cloud setup) |
+
+**Common patterns**:
+- **Text selection precision**: Tasks requiring selection of specific text portions (subscript for "2" in H2O, last paragraph only, vowel-starting words) fail because the VLM cannot precisely identify text boundaries.
+- **Find & Replace with formatting**: Changing font for all text, applying strikethrough to a paragraph, colored words by first letter all require advanced Find & Replace or macro usage that the agent doesn't employ.
+- **Document structure operations**: Converting text to table, adding cross-references, and inserting page breaks require navigating specific menu paths that the agent misses.
+
+**Suggestions**:
+1. For text-level formatting, teach the agent to use terminal commands (e.g., python-docx library) for precise document manipulation.
+2. For Find & Replace tasks, teach the agent the Ctrl+H dialog and its formatting options.
+3. For "select all" operations (change font throughout), use Ctrl+A before applying format.
+
+##### Multi Apps (66 failures / 101 total = 34.7% success)
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| infra_error | 8 | 8 tasks with Google Drive setup errors (invalid client secrets) |
+| wrong_answer | 22 | Create animated GIF from video; merge xlsx columns via CLI; open email link in Chrome; convert doc to PDF via CLI; complete Python calculator code; extract author info from papers; insert GPT-4 results into report; configure academic homepage yaml; filter JSON gemini responses; cross-check invoices; extract photos of presenter; update bookkeeping from receipts; organize grammar test answers; fix Snake game bug; extract pass rates from PDFs; review APA formatting; add course to timetable; fill professor emails; convert Impress text to Writer doc; set up workspace in terminal; extract email bill + record in tally |
+| max_steps | 18 | Extract 5 emails to Calc report; convert Impress to video+play in VLC; book from website reference; debug Tetris rotation crash; insert speaking notes from file to PPT slides; Google Scholar of corresponding author; Hong Kong restaurant details; fill employee evaluations into PDF forms; divide book into chapter PDFs; grade English exam papers; HuggingFace daily papers; movie fan IMDB unseen list; find Yann LeCun on Scholar; find 5 visa machines in Shenzhen; save Apple blog to docx; complete bubbleSort from tutorial; export dblp bibtex; find author webpages for bookmarks |
+| complex_multi_step | 12 | Create animated GIF (VLC+GIMP); merge xlsx via CLI; extract paper authors to xlsx; insert GPT-4 table into Writer; configure yaml in IDE; filter JSON+paste+highlight in Writer; extract photos of specific person; cross-check invoices; organize bookkeeping; extract pass rates; review APA formatting; extract email bill pattern |
+| navigation_failure | 4 | Open email link in new Chrome tab; install Chrome plugins from list; convert Impress text to Writer; setup workspace (terminal+file manager+Chrome) |
+| unsupported_action | 2 | Convert Impress to video (built-in export doesn't exist); extract pixel art character + write Python script to replicate |
+
+**Common patterns**:
+- **Google Drive infra failures**: 8 tasks (7.9% of multi_apps) fail due to missing Google Drive client secrets file. These should be excluded from scoring.
+- **Cross-application data transfer**: The most common failure pattern (20+ tasks) involves reading data from one app and writing it to another (email to spreadsheet, PDF to form, spreadsheet to web, web to spreadsheet). Each app switch costs multiple steps.
+- **Web scraping to structured data**: Tasks requiring visiting websites and filling results into spreadsheets/documents (restaurants on Google Maps, IMDB movies, conference locations, paper metadata) consistently fail because web navigation is unpredictable and time-consuming.
+- **Code debugging/completion**: Tasks requiring understanding and fixing Python code (Tetris bug, Snake game, bubbleSort) fail because the agent tries to debug via GUI rather than reading/editing the file directly.
+- **Complex file operations**: Tasks involving PDF manipulation (split chapters, fill evaluation forms), email attachment extraction, and format conversion chains fail due to needing too many precise steps.
+
+**Suggestions**:
+1. **Prioritize terminal/command-line approaches**: For data extraction, file conversion, and code tasks, the agent should default to terminal commands (Python scripts, CLI tools) rather than GUI navigation.
+2. **Implement a "web scraping" strategy**: For tasks requiring data from websites, use the terminal to curl/wget pages and parse with Python rather than clicking through web UIs.
+3. **Fix Google Drive setup**: Resolve the client secrets file issue to recover 8 tasks.
+4. **Add "code debugging" strategy**: For code tasks, read the file in terminal, understand the bug, edit with sed/vim, then test.
+5. **Increase max_steps for multi_apps**: Many legitimate multi-app tasks need 40-50 steps. Consider domain-specific step limits.
+
+##### OS (5 failures / 24 total = 79.2% success)
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| wrong_answer | 5 | Display battery percentage (wrong setting path); set default Python to Python4 (impossible -- Python4 doesn't exist); copy directory hierarchy without files; copy *failed.ipynb preserving hierarchy; create SSH user restricted to folder |
+
+**Common patterns**:
+- **Impossible tasks**: Setting default Python to Python4 is impossible (Python4 doesn't exist). Agent should declare this.
+- **Complex shell commands**: Tasks requiring specific find/rsync/cp flags for preserving directory hierarchies or matching patterns fail when the agent constructs wrong commands.
+- **SSH user creation**: Creating a restricted SSH user requires specific chroot/permission configuration that the agent doesn't know.
+
+**Suggestions**:
+1. For impossible tasks, teach the agent to reason about feasibility before attempting.
+2. For shell commands, provide examples of common patterns (rsync --include/--exclude, find -exec).
+
+##### Thunderbird (3 failures / 15 total = 80.0% success)
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| wrong_answer | 3 | Add Outlook account (filled wrong fields or wrong dialog); change reply quote formatting (wrong setting path); apply auto-filters to subfolders (requires extension or about:config) |
+
+**Common patterns**:
+- **Settings navigation**: Thunderbird has deeply nested settings. The agent occasionally navigates to the wrong panel.
+- **Account setup**: The account setup wizard flow is multi-step and the agent may fill fields incorrectly.
+
+**Suggestions**:
+1. For Thunderbird settings, teach about:config approach for advanced settings.
+2. For account setup, provide step-by-step hints for the wizard flow.
+
+##### VLC (1 failure / 17 total = 94.1% success)
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| wrong_answer | 1 | Rotate/flip video and save as MP4 (requires convert+transcode pipeline that agent doesn't construct correctly) |
+
+**Common patterns**:
+- VLC is the strongest domain. The single failure involves saving a transformed video, which requires the VLC convert/save dialog with specific codec and filter settings.
+
+**Suggestions**:
+1. For video transformation+save, teach the VLC "Convert/Save" workflow (Media > Convert/Save > Add file > Convert > select codec + video filter).
+
+##### VS Code (6 failures / 22 total = 72.7% success)
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| wrong_answer | 3 | Add two folders to workspace; indent lines 2-10; change display language to Arabic without extensions |
+| max_steps | 2 | Visualize numpy arrays (requires extension installation + code execution); change background to photo (requires extension) |
+| navigation_failure | 1 | Open two workspaces simultaneously in same window (not a standard VS Code feature) |
+
+**Common patterns**:
+- **Extension-dependent tasks**: Two failures require installing specific extensions (Data Viewer for numpy, background image extension). The agent may not know which extension is needed.
+- **Workspace operations**: Multi-workspace and multi-folder workspace operations have non-obvious UIs.
+- **Settings.json manipulation**: Some tasks (language change, exclude patterns) are easier via direct settings.json editing than GUI.
+
+**Suggestions**:
+1. For settings tasks, prefer editing settings.json directly via terminal rather than navigating the settings UI.
+2. For extension-dependent tasks, search the marketplace for relevant extensions first.
+
+---
+
+#### Summary: Top Improvement Opportunities
+
+| Priority | Area | Potential Gain | Effort |
+|----------|------|---------------|--------|
+| 1 | **Fix Google Drive infra** | +8 tasks (2.2%) | Low |
+| 2 | **Increase max_steps for multi_apps/calc** | +10-15 tasks (2.7-4.1%) | Low |
+| 3 | **Terminal-first strategy for multi_apps** | +15-20 tasks (4.1-5.4%) | Medium |
+| 4 | **Impress background/formatting hints** | +5-8 tasks (1.4-2.2%) | Low |
+| 5 | **Travel booking site patterns** | +4-6 tasks (1.1-1.6%) | Medium |
+| 6 | **Pivot table / chart wizard hints** | +5-8 tasks (1.4-2.2%) | Medium |
+| 7 | **Impossible task early-exit** | +3-5 tasks (0.8-1.4%) | Low |
+| 8 | **Code debugging via terminal** | +3-5 tasks (0.8-1.4%) | Medium |
+
+**Theoretical ceiling if all improvements work**: ~53.5% + 15-20% = **68-73% success rate**.
+
+**Most impactful single change**: Switching multi_apps tasks to a terminal-first approach (Python scripts for data extraction, file manipulation, web scraping) would recover the most failures since 66% of failures in this domain involve data transfer between apps that could be scripted.
+
+---
+
+### Key Issues Found
+1. **VLM can't locate small UI elements**: Three-dot menus (⋮), trash icons, checkboxes ~16px get wrong coordinates.
+   - Root cause: 1920x1080 PNG has too much visual detail; small icons are ~0.8% of screen area
+   - Mitigation: force-break after stuck loop; encourage keyboard navigation
+   - Future fix: could add accessibility tree info alongside screenshots
+2. **Token costs prohibitive**: 130K-1M+ input tokens per step × 35 steps × 39 tasks
+   - Full PNG at 1920x1080 is very expensive
+   - Consider: JPEG compression, resize back to ~1120px (accept coordinate scaling), or crop relevant area
+3. **Click/escape oscillation**: Agent clicks wrong spot, gets error UI (dropdown), presses escape, retries same spot
+   - Fixed with broader history pattern detection (4+/8 clicks in same area → force-break)
+4. **`pyautogui.write()` limitations**: Only handles ASCII characters, some task instructions need Unicode
+   - Could use `xdotool type` or clipboard-paste as fallback
+
+### Key Differences from Our Sandbox
+1. **OS**: Ubuntu with full desktop (GNOME) vs our Docker sandbox (Xvfb + Chrome only)
+2. **Actions**: pyautogui code strings vs our structured JSON actions
+3. **Evaluation**: OSWorld has built-in evaluators per task (exact_match, script-based checks)
+4. **Applications**: Chrome, GIMP, LibreOffice, Thunderbird, VLC, VS Code, terminal
+5. **Snapshots**: Each task starts from a specific VM snapshot (clean state)
+6. **No auto-navigate**: Agent must navigate to URLs manually via keyboard
