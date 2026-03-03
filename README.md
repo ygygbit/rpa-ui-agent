@@ -272,6 +272,9 @@ rpa-agent interactive
 
 # Test VLM connection
 rpa-agent test-vlm
+
+# Run with custom endpoint and API key using uv
+uv run rpa-agent run "Open browser and go to apple.com and compare the iphone 17 air and iphone 17 pro specs" --api-key "Powered by Agent Maestro" --base-url "http://localhost:23333/api/anthropic" --model "claude-opus-4.6-1m"
 ```
 
 ### Python API
