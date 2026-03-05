@@ -140,6 +140,10 @@ class AgentConfig:
     sandbox_mode: bool = False
     sandbox_url: str = "http://localhost:8000"
 
+    # UI Taxonomy settings
+    enable_taxonomy: bool = False
+    taxonomy_domain: Optional[str] = None
+
 
 @dataclass
 class AgentStep:
@@ -223,6 +227,18 @@ class GUIAgent:
         self._recent_actions: List[str] = []  # Track recent actions for stuck detection
         self._vlm_scale_factor: float = 1.0  # Ratio of original/VLM image size
 
+        # UI Taxonomy pipeline (optional two-pass VLM element detection)
+        self._taxonomy_pipeline = None
+        if self.config.enable_taxonomy:
+            from .ui_taxonomy import UITaxonomyPipeline
+            self._taxonomy_pipeline = UITaxonomyPipeline(
+                vlm_client=self.vlm.client,
+                vlm_model=self.config.vlm_config.model,
+                domain=self.config.taxonomy_domain,
+                enable_annotation=True,
+                max_elements=20,
+            )
+
         # Build system prompt — config override > operator compressed template > default compressed
         if self.config.system_prompt:
             self._system_prompt = self.config.system_prompt
@@ -232,6 +248,17 @@ class GUIAgent:
             )
         else:
             self._system_prompt = SystemPrompts.GUI_AGENT_COMPRESSED
+
+        # Append taxonomy instructions to system prompt if enabled
+        if self._taxonomy_pipeline:
+            self._system_prompt += (
+                "\n\n## UI Element Detection\n"
+                "The screenshot includes numbered bounding boxes [N] around detected interactive elements. "
+                "A structured element list is appended to the task description. "
+                "Use these element IDs and their coordinates to precisely target your clicks. "
+                "Prefer clicking at the exact center coordinates listed for each element. "
+                "If an element's bounding box is visible, click its center rather than guessing."
+            )
 
         # Ensure screenshot directory exists
         self.config.screenshot_dir.mkdir(parents=True, exist_ok=True)
@@ -1221,10 +1248,27 @@ class GUIAgent:
                 self.console.print(f"\n[dim]Step {step_number}: Capturing screenshot...[/]")
                 base64_img, screenshot_path, screen_info = self._capture_screenshot(step_number)
 
+                # 1.5 UI Taxonomy: detect elements and annotate screenshot
+                taxonomy_context = ""
+                if self._taxonomy_pipeline:
+                    vlm_media_type_for_detect = "image/jpeg" if self.config.vlm_image_format.lower() == "jpeg" else "image/png"
+                    self.console.print("[dim]Detecting UI elements (taxonomy pass)...[/]")
+                    taxonomy_result = self._taxonomy_pipeline.process_screenshot(
+                        base64_img, vlm_media_type_for_detect, step_number
+                    )
+                    if taxonomy_result.annotated_image:
+                        base64_img = taxonomy_result.annotated_image
+                    taxonomy_context = taxonomy_result.context_string
+                    if taxonomy_result.elements:
+                        self.console.print(f"[dim]  Detected {len(taxonomy_result.elements)} UI elements[/]")
+
                 # 2. Analyze with VLM
                 self.console.print("[dim]Analyzing screenshot...[/]")
                 # Pass as tuple (base64_data, media_type)
                 vlm_media_type = "image/jpeg" if self.config.vlm_image_format.lower() == "jpeg" else "image/png"
+                # If taxonomy annotated the image, it's now PNG
+                if taxonomy_context and self._taxonomy_pipeline:
+                    vlm_media_type = "image/png"
                 screenshot_data = (base64_img, vlm_media_type)
 
                 # Apply sliding window to conversation history if configured
@@ -1253,6 +1297,10 @@ class GUIAgent:
                     elif remaining <= self.config.max_steps // 3:
                         task_for_vlm += " Be efficient — limited steps remaining."
 
+                # Append taxonomy element context if available
+                if taxonomy_context:
+                    task_for_vlm += f"\n\n{taxonomy_context}"
+
                 vlm_response = self.vlm.analyze_screenshot(
                     screenshot=screenshot_data,
                     task=task_for_vlm,
@@ -1263,6 +1311,21 @@ class GUIAgent:
 
                 # 3. Parse action
                 action, parse_msg = self.parser.parse(vlm_response.text)
+
+                # 3.05 Snap coordinates to nearest detected element (in VLM image space, before rescale)
+                if action is not None and self._taxonomy_pipeline and hasattr(action, 'x') and hasattr(action, 'y'):
+                    if action.x is not None and action.y is not None:
+                        matched = self._taxonomy_pipeline.knowledge_graph.match_target(
+                            action.x, action.y, max_distance=30
+                        )
+                        if matched:
+                            old_x, old_y = action.x, action.y
+                            action.x, action.y = matched.center
+                            if (old_x, old_y) != matched.center:
+                                self.console.print(
+                                    f"[dim]  Snapped ({old_x},{old_y}) -> ({action.x},{action.y}) "
+                                    f"[{matched.element_id}] {matched.element_type} \"{matched.label}\"[/]"
+                                )
 
                 # 3.1 Rescale coordinates from VLM image space to screen space
                 if action is not None:

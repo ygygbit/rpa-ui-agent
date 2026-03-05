@@ -11,6 +11,7 @@ import base64
 import io
 import json
 import logging
+import math
 import re
 import time
 from typing import Dict, List, Optional, Tuple
@@ -33,7 +34,7 @@ class RPAAgent:
         self,
         vlm_base_url: str = "http://localhost:23333/api/anthropic",
         vlm_api_key: str = "custom",
-        vlm_model: str = "claude-opus-4.6-fast",
+        vlm_model: str = "claude-opus-4.6-1m",
         max_tokens: int = 4096,
         temperature: float = 0.1,
         max_trajectory_length: int = 10,
@@ -43,6 +44,8 @@ class RPAAgent:
         action_space: str = "pyautogui",
         observation_type: str = "screenshot",
         client_password: str = "password",
+        enable_taxonomy: bool = False,
+        taxonomy_domain: Optional[str] = None,
     ):
         import anthropic
 
@@ -57,6 +60,8 @@ class RPAAgent:
         self.action_space = action_space
         self.observation_type = observation_type
         self.client_password = client_password
+        self.enable_taxonomy = enable_taxonomy
+        self.taxonomy_domain = taxonomy_domain
 
         # Anthropic client pointing at custom endpoint
         self.client = anthropic.Anthropic(
@@ -72,11 +77,48 @@ class RPAAgent:
         self._repeat_count = 0
         self._action_history = []  # Track recent actions for stuck detection
 
+        # UI Taxonomy pipeline
+        self._taxonomy_pipeline = None
+        if enable_taxonomy:
+            from .ui_taxonomy.integration import UITaxonomyPipeline
+            self._taxonomy_pipeline = UITaxonomyPipeline(
+                vlm_client=self.client,
+                vlm_model=self.vlm_model,
+                domain=taxonomy_domain,
+                enable_annotation=True,
+                max_elements=20,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+            )
+            logger.info(f"UI Taxonomy enabled (domain={taxonomy_domain})")
+
         # System prompt adapted for OSWorld Ubuntu environment
         self.system_prompt = self._build_system_prompt()
 
+    def _stream_create(self, **kwargs) -> str:
+        """Call the VLM using streaming to work around proxy response-size bug.
+
+        Accepts the same kwargs as client.messages.create() and returns
+        the concatenated text content of the response.
+        """
+        collected_text = []
+        try:
+            with self.client.messages.stream(**kwargs) as stream:
+                for text in stream.text_stream:
+                    collected_text.append(text)
+        except Exception as e:
+            # If we already collected some text, use it (proxy "Response too long" error)
+            if collected_text:
+                logger.warning(f"Stream ended with error ({e}) but collected {len(collected_text)} chunks, using partial response")
+                return "".join(collected_text)
+            # Otherwise fall back to non-streaming
+            logger.warning(f"Streaming failed ({e}), falling back to non-streaming")
+            response = self.client.messages.create(**kwargs)
+            return response.content[0].text
+        return "".join(collected_text)
+
     def _build_system_prompt(self) -> str:
-        return (
+        prompt = (
             "You are a GUI automation agent controlling an Ubuntu desktop via screenshots. "
             "Execute one action per response as JSON.\n\n"
             "## Coordinates\n"
@@ -95,6 +137,7 @@ class RPAAgent:
             '- **press_key**: `{"action":"press_key","key":"enter"}`\n'
             '- **hotkey**: `{"action":"hotkey","keys":["ctrl","a"]}`\n'
             '- **scroll**: `{"action":"scroll","direction":"down","amount":3,"x":960,"y":540}`\n'
+            '- **triple_click**: `{"action":"triple_click","x":500,"y":300}` - select entire line/paragraph\n'
             '- **drag**: `{"action":"drag","start_x":100,"start_y":200,"end_x":300,"end_y":400}`\n'
             '- **wait**: `{"action":"wait","seconds":2}`\n'
             '- **done**: `{"action":"done","summary":"Task completed"}`\n'
@@ -120,7 +163,33 @@ class RPAAgent:
             "- For Chrome settings: prefer navigating directly to chrome:// URLs over clicking through menus\n"
             "- For file operations: use terminal commands (Ctrl+Alt+T to open terminal)\n"
             "- For text editing: use Ctrl+H for find/replace, Ctrl+G for go-to-line\n"
+            "- For selecting text in a field: use triple_click to select all text in that line, or Ctrl+A to select all\n"
+            "- For LibreOffice: use menu bar navigation (File, Edit, Format, etc.), not toolbar icons\n"
+            "  - To rename a sheet tab: double-click the tab, or right-click > Rename Sheet\n"
+            "  - To change font: click the cell first, then use Format > Cells or the font dropdown in toolbar\n"
+            "  - To select objects (shapes, images): click directly on them, use Tab to cycle through objects\n"
+            "- For GIMP: use menu bar (Filters, Colors, Image, etc.) rather than small toolbar icons\n"
+            "  - Prefer Filters > [category] > [filter] path for applying effects\n"
+            "  - Use Image > Canvas Size, Image > Scale Image for dimension changes\n"
+            "- For VS Code: use Ctrl+Shift+P command palette for settings and commands\n"
+            "- For Thunderbird: use right-click context menus on folders/messages for actions\n"
             "- IMPORTANT: If you see no change after your action, your click probably missed. Try a different approach.\n\n"
+        )
+
+        # Add taxonomy-specific instructions if enabled
+        if self.enable_taxonomy:
+            prompt += (
+                "## UI Element Detection\n"
+                "The screenshot may have numbered bounding boxes [1], [2], etc. marking detected UI elements.\n"
+                "A list of detected elements with their types, labels, coordinates, and hierarchy is provided.\n"
+                "USE THIS INFORMATION to:\n"
+                "- Verify your click target matches the correct element ID\n"
+                "- Use the element center coordinates for precise clicking\n"
+                "- Understand the UI hierarchy (which elements contain which)\n"
+                "- Avoid clicking adjacent elements by checking bounding boxes\n\n"
+            )
+
+        prompt += (
             "## Rules\n"
             "1. ONE action per response as JSON block\n"
             "2. Use click_and_type when you need to click a field then type text\n"
@@ -131,6 +200,8 @@ class RPAAgent:
             "7. Prefer keyboard shortcuts over clicking small buttons"
         )
 
+        return prompt
+
     def reset(self, *args, **kwargs):
         """Reset agent state between tasks."""
         self._history = []
@@ -139,6 +210,8 @@ class RPAAgent:
         self._last_action = {}
         self._repeat_count = 0
         self._action_history = []
+        if self._taxonomy_pipeline:
+            self._taxonomy_pipeline.reset()
         logger.info("RPAAgent reset")
 
     def _prepare_screenshot(self, obs: Dict) -> Tuple[str, str]:
@@ -306,6 +379,11 @@ class RPAAgent:
             y = int(int(action_dict.get("y", 0)) * sf)
             return f"pyautogui.doubleClick({x}, {y})"
 
+        elif action_type == "triple_click":
+            x = int(int(action_dict.get("x", 0)) * sf)
+            y = int(int(action_dict.get("y", 0)) * sf)
+            return f"pyautogui.click({x}, {y}, clicks=3)"
+
         elif action_type == "right_click":
             x = int(int(action_dict.get("x", 0)) * sf)
             y = int(int(action_dict.get("y", 0)) * sf)
@@ -400,6 +478,24 @@ class RPAAgent:
             # Prepare screenshot
             b64_img, media_type = self._prepare_screenshot(obs)
 
+            # === UI Taxonomy: Element Detection (Pass 1) ===
+            taxonomy_context = ""
+            if self._taxonomy_pipeline:
+                try:
+                    taxonomy_result = self._taxonomy_pipeline.process_screenshot(
+                        b64_img, media_type, self._step_count
+                    )
+                    if taxonomy_result.annotated_image:
+                        b64_img = taxonomy_result.annotated_image
+                        media_type = "image/png"  # Annotator outputs PNG
+                    taxonomy_context = taxonomy_result.context_string
+                    logger.info(
+                        f"Taxonomy: {len(taxonomy_result.elements)} elements, "
+                        f"context={len(taxonomy_context)} chars"
+                    )
+                except Exception as e:
+                    logger.warning(f"Taxonomy pipeline error (continuing without): {e}")
+
             # Build user message
             user_text = f"Task: {instruction}"
             user_text += f"\n\n[Step {self._step_count}]"
@@ -412,6 +508,10 @@ class RPAAgent:
                 if len(a11y_tree) > 3000:
                     truncated += "\n... (truncated)"
                 user_text += f"\n\n## Accessibility Tree (UI elements on screen):\n{truncated}"
+
+            # Inject taxonomy context
+            if taxonomy_context:
+                user_text += f"\n\n{taxonomy_context}"
 
             # Add stuck-loop warning if repeating
             # Check both consecutive repeats AND broader history pattern
@@ -466,8 +566,8 @@ class RPAAgent:
                 ]
             })
 
-            # Call VLM
-            response = self.client.messages.create(
+            # === VLM Call: Action Decision (Pass 2) ===
+            response_text = self._stream_create(
                 model=self.vlm_model,
                 max_tokens=self.max_tokens,
                 system=self.system_prompt,
@@ -475,7 +575,6 @@ class RPAAgent:
                 temperature=self.temperature,
             )
 
-            response_text = response.content[0].text
             logger.info(f"VLM response: {response_text[:200]}")
 
             # Parse action from response
@@ -486,6 +585,12 @@ class RPAAgent:
                 self._history.append({"role": "user", "content": user_text})
                 self._history.append({"role": "assistant", "content": response_text})
                 return response_text, ["WAIT"]
+
+            # === UI Taxonomy: Snap click to element center (Pass 3) ===
+            if self._taxonomy_pipeline and action_dict.get("action") in (
+                "click", "double_click", "triple_click", "right_click", "click_and_type"
+            ):
+                self._snap_to_element(action_dict)
 
             # Convert to pyautogui code
             pyautogui_code = self._action_to_pyautogui(action_dict)
@@ -507,15 +612,48 @@ class RPAAgent:
             self._history.append({"role": "user", "content": user_text})
             self._history.append({"role": "assistant", "content": response_text})
 
-            # Log token usage
-            if hasattr(response, 'usage'):
-                logger.info(
-                    f"Tokens: {response.usage.input_tokens} in / "
-                    f"{response.usage.output_tokens} out"
-                )
-
             return response_text, [pyautogui_code]
 
         except Exception as e:
             logger.error(f"RPAAgent.predict error: {e}", exc_info=True)
             return f"Error: {e}", ["WAIT"]
+
+    def _snap_to_element(self, action_dict: Dict):
+        """
+        Snap click coordinates to the nearest detected element's center.
+
+        Only snaps if a matching element is within 30 pixels of the VLM's
+        target coordinates. This improves click precision without overriding
+        the VLM's intent.
+        """
+        if not self._taxonomy_pipeline:
+            return
+
+        x = int(action_dict.get("x", 0))
+        y = int(action_dict.get("y", 0))
+
+        matched = self._taxonomy_pipeline.knowledge_graph.match_target(x, y)
+        if matched is None:
+            return
+
+        dist = math.dist((x, y), matched.center)
+        if dist < 30:
+            old_x, old_y = x, y
+            # Snap to element center (in VLM image space, before scaling)
+            action_dict["x"] = matched.center[0]
+            action_dict["y"] = matched.center[1]
+            logger.info(
+                f"Taxonomy: snapped ({old_x},{old_y}) -> [{matched.element_id}] "
+                f"'{matched.label}' at {matched.center} (dist={dist:.1f}px)"
+            )
+
+            # Record click for knowledge graph tracking
+            self._taxonomy_pipeline.knowledge_graph.record_click_outcome(
+                matched.center[0], matched.center[1],
+                matched.element_id
+            )
+        else:
+            logger.debug(
+                f"Taxonomy: no snap — nearest element [{matched.element_id}] "
+                f"'{matched.label}' at {matched.center} too far (dist={dist:.1f}px)"
+            )

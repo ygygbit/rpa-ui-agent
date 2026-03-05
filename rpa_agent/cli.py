@@ -64,6 +64,8 @@ def run(
         help=f"Model name. Available: {', '.join(AVAILABLE_MODELS)}",
         callback=model_callback
     ),
+    enable_taxonomy: bool = typer.Option(False, "--enable-taxonomy", "--taxonomy", help="Enable UI element detection (two-pass VLM)"),
+    taxonomy_domain: Optional[str] = typer.Option(None, "--taxonomy-domain", help="Domain hint for element matching (chrome, libreoffice, gimp, vs_code, thunderbird)"),
 ):
     """
     Run the GUI agent to accomplish a task.
@@ -96,7 +98,9 @@ def run(
         screenshot_dir=Path(screenshot_dir),
         screenshot_scale=screenshot_scale,
         screenshot_quality=screenshot_quality,
-        show_cursor_overlay=not no_overlay
+        show_cursor_overlay=not no_overlay,
+        enable_taxonomy=enable_taxonomy,
+        taxonomy_domain=taxonomy_domain,
     )
 
     # Create and run agent
@@ -546,6 +550,8 @@ def sandbox_run(
         "--sandbox-url",
         help="Sandbox API URL"
     ),
+    enable_taxonomy: bool = typer.Option(False, "--enable-taxonomy", "--taxonomy", help="Enable UI element detection (two-pass VLM)"),
+    taxonomy_domain: Optional[str] = typer.Option(None, "--taxonomy-domain", help="Domain hint for element matching (chrome, libreoffice, gimp, vs_code, thunderbird)"),
 ):
     """
     Run a task in the sandbox environment.
@@ -604,6 +610,8 @@ def sandbox_run(
         screenshot_dir=Path(screenshot_dir),
         sandbox_mode=True,
         sandbox_url=sandbox_url,
+        enable_taxonomy=enable_taxonomy,
+        taxonomy_domain=taxonomy_domain,
     )
 
     # Create and run agent

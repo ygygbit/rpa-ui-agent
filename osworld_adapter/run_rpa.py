@@ -152,6 +152,8 @@ def run_benchmark(args):
         vlm_max_edge=args.vlm_max_edge,
         vlm_image_quality=args.vlm_image_quality,
         client_password=args.vm_password,
+        enable_taxonomy=args.enable_taxonomy,
+        taxonomy_domain=args.taxonomy_domain,
     )
 
     # Track results
@@ -185,6 +187,24 @@ def run_benchmark(args):
         instruction = example.get("instruction", "")
         logger.info(f"Domain: {domain}")
         logger.info(f"Instruction: {instruction[:100]}...")
+
+        # Auto-detect taxonomy domain if not specified
+        if args.enable_taxonomy and not args.taxonomy_domain:
+            taxonomy_domain = domain
+            # Map OSWorld domains to our prototype domains
+            domain_mapping = {
+                "chrome": "chrome",
+                "gimp": "gimp",
+                "libreoffice_calc": "libreoffice",
+                "libreoffice_writer": "libreoffice",
+                "libreoffice_impress": "libreoffice",
+                "vs_code": "vs_code",
+                "thunderbird": "thunderbird",
+            }
+            mapped = domain_mapping.get(domain)
+            if mapped and hasattr(agent, '_taxonomy_pipeline') and agent._taxonomy_pipeline:
+                agent._taxonomy_pipeline.set_domain(mapped)
+                logger.info(f"Taxonomy domain auto-set to: {mapped}")
 
         task_start = time.time()
 
@@ -378,7 +398,7 @@ def main():
                         help="VLM endpoint URL")
     parser.add_argument("--vlm_api_key", default="custom",
                         help="VLM API key")
-    parser.add_argument("--vlm_model", default="claude-opus-4.6-fast",
+    parser.add_argument("--vlm_model", default="claude-opus-4.6-1m",
                         help="VLM model name")
     parser.add_argument("--max_tokens", type=int, default=4096)
     parser.add_argument("--temperature", type=float, default=0.1)
@@ -400,6 +420,12 @@ def main():
                         help="VM sudo password")
     parser.add_argument("--no_a11y", action="store_true",
                         help="Disable accessibility tree (much faster, ~10x speedup)")
+
+    # UI Taxonomy settings
+    parser.add_argument("--enable_taxonomy", action="store_true",
+                        help="Enable UI Taxonomy element detection (two-pass VLM)")
+    parser.add_argument("--taxonomy_domain", default=None,
+                        help="Domain hint for prototype matching (chrome, libreoffice, gimp, vs_code, thunderbird)")
 
     args = parser.parse_args()
 
