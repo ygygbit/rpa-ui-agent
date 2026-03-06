@@ -81,7 +81,8 @@ Return a JSON object with:
 - {"type": "type", "text": "string"} — Type text (assumes field is focused)
 - {"type": "keypress", "keys": ["key1", "key2"]} — Press key(s). Single key or combo (e.g. ["CTRL", "a"])
 - {"type": "scroll", "x": int, "y": int, "scroll_x": int, "scroll_y": int} — Scroll
-- {"type": "wait"} — Wait ~2 seconds
+- {"type": "wait"} — Wait ~2 seconds (default)
+- {"type": "wait", "seconds": 30} — Wait a specific number of seconds (use for videos, loading)
 - {"type": "screenshot"} — Request a fresh screenshot
 
 ## Exploration Strategy
@@ -298,7 +299,7 @@ def load_guidebook(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def summarize_guidebook_for_prompt(guidebook_content: str, max_chars: int = 6000) -> str:
+def summarize_guidebook_for_prompt(guidebook_content: str, max_chars: int = 8000) -> str:
     """Summarize a guidebook for inclusion in the system prompt.
 
     If the guidebook is short enough, include it as-is.

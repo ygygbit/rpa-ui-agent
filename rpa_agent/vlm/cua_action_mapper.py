@@ -189,9 +189,15 @@ def map_cua_action(action: Any) -> AnyAction:
         )
 
     elif action_type == "wait":
+        # Support custom wait durations: {"type": "wait", "seconds": 30}
+        seconds = _get_attr(action, "seconds", None)
+        if seconds is not None:
+            seconds = min(float(seconds), 120.0)  # Cap at 2 minutes
+        else:
+            seconds = 2.0
         return WaitAction(
-            seconds=2.0,
-            reason="CUA wait",
+            seconds=seconds,
+            reason=f"CUA wait ({seconds}s)",
             action_type=ActionType.WAIT,
         )
 

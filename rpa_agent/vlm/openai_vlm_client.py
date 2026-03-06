@@ -63,7 +63,8 @@ Task complete:
 - {"type": "scroll", "x": int, "y": int, "scroll_x": int, "scroll_y": int} — Scroll. scroll_y negative=up, positive=down. Units are pixels (120=one notch)
 - {"type": "drag", "path": [{"x": int, "y": int}, {"x": int, "y": int}]} — Drag from start to end
 - {"type": "move", "x": int, "y": int} — Move mouse cursor
-- {"type": "wait"} — Wait ~2 seconds
+- {"type": "wait"} — Wait ~2 seconds (default)
+- {"type": "wait", "seconds": 30} — Wait a specific number of seconds (up to 120). Use this for videos, loading screens, or timed content.
 - {"type": "screenshot"} — Request a fresh screenshot (no-op, you'll get one after actions run)
 
 ## Rules
@@ -76,6 +77,8 @@ Task complete:
 6. When a task is done, set status to "done" and empty actions.
 7. If stuck, try a different approach rather than repeating the same failed action.
 8. Look at the previous screenshots to see what changed after your actions. If the screen didn't change, your action likely missed the target — adjust coordinates or try a different approach.
+9. For video/timed content: if you see a video playing and a button (like NEXT) is disabled, use {"type": "wait", "seconds": 30} to wait for the video to finish. Then take another screenshot to check. Repeat until the button enables. Do NOT click a disabled button — it won't work.
+10. For training courses with gated sections: always wait for the current section's content to fully complete before trying to advance. Look for visual cues like progress bars, enabled/disabled button states, and checkmarks.
 """
 
 

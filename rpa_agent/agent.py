@@ -658,7 +658,14 @@ class GUIAgent:
                     )
 
             elif isinstance(action, WaitAction):
-                time.sleep(action.seconds)
+                # For long waits, check state periodically so Ctrl+C can interrupt
+                remaining = action.seconds
+                while remaining > 0 and self.state == AgentState.RUNNING:
+                    sleep_chunk = min(remaining, 2.0)
+                    time.sleep(sleep_chunk)
+                    remaining -= sleep_chunk
+                if remaining > 0:
+                    self.console.print(f"[yellow]Wait interrupted ({action.seconds - remaining:.0f}s of {action.seconds:.0f}s)[/]")
 
             elif isinstance(action, ScreenshotAction):
                 # Just capture a new screenshot (will be done in next iteration)
@@ -1658,9 +1665,13 @@ class GUIAgent:
             from .explore import load_guidebook, summarize_guidebook_for_prompt
             raw = load_guidebook(self.config.guidebook_path)
             guidebook_context = (
-                "## APP GUIDEBOOK — Use this as your navigation reference\n\n"
+                "\n## APP GUIDEBOOK — FOLLOW THESE INSTRUCTIONS\n\n"
                 "The following guidebook was built from prior exploration of this app. "
-                "Use it to understand the app structure, find elements, and navigate efficiently.\n\n"
+                "It contains the exact layout, coordinates, and workflow you need. "
+                "**Follow the step-by-step workflow exactly.** Pay special attention to "
+                "WAIT instructions — videos take real time to play and buttons stay "
+                "disabled until content finishes. Use {\"type\": \"wait\", \"seconds\": 60} "
+                "to wait for videos.\n\n"
                 + summarize_guidebook_for_prompt(raw)
             )
             self.console.print(f"[dim]Loaded guidebook: {self.config.guidebook_path} ({len(raw)} chars)[/]")
@@ -1783,6 +1794,9 @@ class GUIAgent:
                     if isinstance(action, ScreenshotAction):
                         self.console.print(f"[dim]  Action {i+1}/{len(mapped_actions)}: screenshot (no-op)[/]")
                         result = ActionResult(success=True, action=action)
+                    elif isinstance(action, WaitAction) and action.seconds > 5:
+                        self.console.print(f"[yellow]  Action {i+1}/{len(mapped_actions)}: waiting {action.seconds:.0f}s (video/content playback)...[/]")
+                        result = self._execute_action(action)
                     else:
                         self.console.print(f"[dim]  Action {i+1}/{len(mapped_actions)}: {action.action_type.value}[/]")
                         result = self._execute_action(action)
@@ -2080,6 +2094,9 @@ class GUIAgent:
 
                     if isinstance(action, ScreenshotAction):
                         result = ActionResult(success=True, action=action)
+                    elif isinstance(action, WaitAction) and action.seconds > 5:
+                        self.console.print(f"[yellow]  Action {i+1}/{len(mapped_actions)}: waiting {action.seconds:.0f}s...[/]")
+                        result = self._execute_action(action)
                     else:
                         self.console.print(f"[dim]  Action {i+1}/{len(mapped_actions)}: {action.action_type.value}[/]")
                         result = self._execute_action(action)
