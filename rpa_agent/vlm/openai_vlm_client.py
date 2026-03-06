@@ -181,6 +181,8 @@ class OpenAIVLMClient:
         task: str,
         current_screenshot: str,
         turn_history: List[TurnRecord],
+        system_prompt_override: Optional[str] = None,
+        extra_context: Optional[str] = None,
     ) -> OpenAIVLMResponse:
         """
         Send the current state to the model with full turn history.
@@ -189,11 +191,17 @@ class OpenAIVLMClient:
             task: The task description.
             current_screenshot: Base64 PNG of current screen state.
             turn_history: Previous turns for context (last N kept).
+            system_prompt_override: Replace the default CUA system prompt entirely.
+            extra_context: Additional context appended to system prompt (e.g., guidebook).
 
         Returns:
             OpenAIVLMResponse with parsed actions and status.
         """
-        conversation = self._build_conversation(task, current_screenshot, turn_history)
+        conversation = self._build_conversation(
+            task, current_screenshot, turn_history,
+            system_prompt_override=system_prompt_override,
+            extra_context=extra_context,
+        )
 
         payload: Dict[str, Any] = {
             "model": self.config.model,
@@ -225,6 +233,8 @@ class OpenAIVLMClient:
         task: str,
         current_screenshot: str,
         turn_history: List[TurnRecord],
+        system_prompt_override: Optional[str] = None,
+        extra_context: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Build the full conversation from turn history.
 
@@ -241,7 +251,10 @@ class OpenAIVLMClient:
         items: List[Dict[str, Any]] = []
 
         # 1. System prompt
-        prompt = CUA_SYSTEM_PROMPT + f"\n\nScreen dimensions: {self.config.display_width}x{self.config.display_height}\n"
+        base_prompt = system_prompt_override if system_prompt_override else CUA_SYSTEM_PROMPT
+        prompt = base_prompt + f"\n\nScreen dimensions: {self.config.display_width}x{self.config.display_height}\n"
+        if extra_context:
+            prompt += f"\n{extra_context}\n"
         items.append({
             "type": "message",
             "role": "developer",

@@ -154,6 +154,9 @@ class AgentConfig:
     sandbox_mode: bool = False
     sandbox_url: str = "http://localhost:8000"
 
+    # Guidebook — path to a .md guidebook for navigation reference
+    guidebook_path: Optional[Path] = None
+
 
 @dataclass
 class AgentStep:
@@ -1649,6 +1652,19 @@ class GUIAgent:
 
         from .vlm.openai_vlm_client import TurnRecord
 
+        # Load guidebook if provided
+        guidebook_context = None
+        if self.config.guidebook_path and self.config.guidebook_path.exists():
+            from .explore import load_guidebook, summarize_guidebook_for_prompt
+            raw = load_guidebook(self.config.guidebook_path)
+            guidebook_context = (
+                "## APP GUIDEBOOK — Use this as your navigation reference\n\n"
+                "The following guidebook was built from prior exploration of this app. "
+                "Use it to understand the app structure, find elements, and navigate efficiently.\n\n"
+                + summarize_guidebook_for_prompt(raw)
+            )
+            self.console.print(f"[dim]Loaded guidebook: {self.config.guidebook_path} ({len(raw)} chars)[/]")
+
         step_number = 0
         turn_history: List[TurnRecord] = []
 
@@ -1667,6 +1683,7 @@ class GUIAgent:
                     task=task,
                     current_screenshot=screenshot_before,
                     turn_history=turn_history,
+                    extra_context=guidebook_context,
                 )
 
                 actions_raw = vlm_response.actions
@@ -1866,7 +1883,275 @@ class GUIAgent:
 
         return self.steps
 
-    # ==================== CUA (OpenAI GPT-5.4 Computer Use) ====================
+    # ==================== Explore Mode ====================
+
+    def run_explore(
+        self,
+        app_description: str,
+        output_path: Path,
+        on_step: Optional[Callable[[AgentStep], None]] = None,
+        on_action: Optional[Callable[[AnyAction], bool]] = None,
+    ) -> Path:
+        """
+        Explore an application and generate a guidebook.
+
+        Uses the CUA-VLM loop with a specialized exploration prompt.
+        The model systematically navigates the app, documents pages and elements,
+        and builds a structured map. The result is saved as a markdown guidebook.
+
+        Args:
+            app_description: Description of the app to explore (e.g., "Security Foundations: Secure on the Go | Viva Learning")
+            output_path: Path to save the guidebook .md file
+            on_step: Callback after each step
+            on_action: Callback before action execution
+
+        Returns:
+            Path to the generated guidebook file
+        """
+        from .explore import EXPLORE_SYSTEM_PROMPT, AppMap, generate_guidebook
+        from .vlm.openai_vlm_client import TurnRecord
+
+        self.state = AgentState.RUNNING
+        self.current_task = f"Explore: {app_description}"
+        self.steps = []
+        self._recent_actions = []
+
+        # Install SIGINT handler
+        prev_sigint = signal.getsignal(signal.SIGINT)
+
+        def _sigint_handler(signum, frame):
+            self.state = AgentState.PAUSED
+            raise KeyboardInterrupt
+
+        signal.signal(signal.SIGINT, _sigint_handler)
+
+        # Start hotkey monitor
+        from .core.hotkey import HotkeyMonitor
+        self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
+        self._hotkey_monitor.start()
+        self.console.print("[dim]Press Ctrl+C or Ctrl+Alt to stop exploration[/]")
+
+        # Start cursor overlay
+        if self.config.show_cursor_overlay:
+            from .core.cursor_overlay import CursorOverlay
+            self._cursor_overlay = CursorOverlay(color="blue", size=50, line_width=4)
+            self._cursor_overlay.start()
+
+        # Start action notifier
+        if self.config.show_action_notifier:
+            from .core.action_notifier import ActionNotifier
+            self._action_notifier = ActionNotifier()
+            self._action_notifier.start()
+            self._action_notifier.show_action("exploring", f"Explore: {app_description[:40]}...")
+
+        display_w = self.openai_vlm.config.display_width
+        display_h = self.openai_vlm.config.display_height
+
+        self.console.print(Panel(
+            f"[bold]Exploring:[/] {app_description}\n"
+            f"[dim]Provider: CUA-VLM ({self.openai_vlm.config.model}), "
+            f"display: {display_w}x{display_h}[/]\n"
+            f"[dim]Output: {output_path}[/]",
+            title="App Explorer Started"
+        ))
+
+        app_map = AppMap(
+            app_name=app_description,
+            explored_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+
+        step_number = 0
+        turn_history: List[TurnRecord] = []
+
+        try:
+            while self.state == AgentState.RUNNING and step_number < self.config.max_steps:
+                step_number += 1
+                if self._action_notifier:
+                    self._action_notifier.show_thinking(step_number)
+                self.console.print(f"\n[dim]Explore step {step_number}: Capturing screenshot...[/]")
+                screenshot_before, screenshot_path = self._capture_screenshot_cua(step_number)
+
+                # Send to model with explore prompt
+                self.console.print(f"[dim]Sending to model (history: {len(turn_history)} turns, pages: {len(app_map.pages)})...[/]")
+
+                # Build progress context
+                visited_pages = list(app_map.pages.keys())
+                progress = (
+                    f"\n\n## Exploration Progress\n"
+                    f"Pages discovered so far: {', '.join(visited_pages) if visited_pages else 'none yet'}\n"
+                    f"Steps taken: {step_number}/{self.config.max_steps}\n"
+                )
+                if visited_pages:
+                    progress += "Focus on finding NEW pages you haven't visited yet.\n"
+
+                vlm_response = self.openai_vlm.send(
+                    task=f"Explore this application: {app_description}",
+                    current_screenshot=screenshot_before,
+                    turn_history=turn_history,
+                    system_prompt_override=EXPLORE_SYSTEM_PROMPT,
+                    extra_context=progress,
+                )
+
+                # Parse page_report from model response
+                try:
+                    text = vlm_response.text.strip()
+                    if text.startswith("```"):
+                        lines = text.split("\n")
+                        lines = [l for l in lines if not l.strip().startswith("```")]
+                        text = "\n".join(lines).strip()
+                    parsed = json.loads(text)
+                    page_report = parsed.get("page_report", {})
+                    if page_report and page_report.get("page_id"):
+                        app_map.add_page(page_report)
+                        patterns = page_report.get("patterns_observed", [])
+                        app_map.merge_patterns(patterns)
+                        self.console.print(
+                            f"[cyan]Page discovered: {page_report.get('page_id')} "
+                            f"({page_report.get('page_title', '?')}), "
+                            f"{len(page_report.get('elements', []))} elements[/]"
+                        )
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+
+                actions_raw = vlm_response.actions
+                status = vlm_response.status
+
+                self.console.print(
+                    f"[dim]Model: {len(actions_raw)} action(s), status={status}, "
+                    f"pages={len(app_map.pages)}, "
+                    f"tokens: in={vlm_response.usage.get('input_tokens', 0)} "
+                    f"out={vlm_response.usage.get('output_tokens', 0)}[/]"
+                )
+
+                # Check if exploration is done
+                if status == "done":
+                    self.state = AgentState.COMPLETED
+                    self.console.print("[green]Exploration complete![/]")
+                    break
+
+                # Handle screenshot-only / no actions
+                is_screenshot_only = (
+                    len(actions_raw) == 1 and
+                    actions_raw[0].get("type") == "screenshot"
+                ) or not actions_raw
+
+                if is_screenshot_only:
+                    self.console.print(f"[dim]Step {step_number}: Screenshot request (no actions)[/]")
+                    turn_history.append(TurnRecord(
+                        screenshot_before=screenshot_before,
+                        model_response=vlm_response.text,
+                        actions_summary="screenshot request",
+                        results_summary="Screenshot captured",
+                        screenshot_after=screenshot_before,
+                    ))
+                    continue
+
+                # Map and execute actions
+                mapped_actions = map_cua_actions(actions_raw)
+                for action in mapped_actions:
+                    self._rescale_action_coords(action)
+
+                action_summaries = []
+                result_summaries = []
+
+                for i, action in enumerate(mapped_actions):
+                    if self.state != AgentState.RUNNING:
+                        break
+
+                    if self._action_notifier:
+                        detail = self._get_action_detail(action)
+                        self._action_notifier.show_step(step_number, action.action_type.value, detail)
+
+                    if on_action and not on_action(action):
+                        action_summaries.append(f"{action.action_type.value}: SKIPPED")
+                        result_summaries.append("skipped by user")
+                        continue
+
+                    if isinstance(action, ScreenshotAction):
+                        result = ActionResult(success=True, action=action)
+                    else:
+                        self.console.print(f"[dim]  Action {i+1}/{len(mapped_actions)}: {action.action_type.value}[/]")
+                        result = self._execute_action(action)
+
+                    action_desc = action.action_type.value
+                    if hasattr(action, 'x') and hasattr(action, 'y'):
+                        action_desc += f" at ({getattr(action, 'x', '?')}, {getattr(action, 'y', '?')})"
+                    if hasattr(action, 'text'):
+                        action_desc += f" text='{getattr(action, 'text', '')[:30]}'"
+                    action_summaries.append(action_desc)
+
+                    if result.success:
+                        result_summaries.append(f"{action.action_type.value}: OK")
+                    else:
+                        result_summaries.append(f"{action.action_type.value}: FAILED - {result.error}")
+
+                    if i == 0:
+                        step = AgentStep(
+                            step_number=step_number,
+                            timestamp=datetime.now(),
+                            screenshot_path=screenshot_path,
+                            vlm_response=vlm_response.text,
+                            action=action,
+                            action_result=result,
+                            reasoning=action.reasoning,
+                            token_usage=vlm_response.usage,
+                        )
+                        self.steps.append(step)
+                        if on_step:
+                            on_step(step)
+
+                if self.state != AgentState.RUNNING:
+                    break
+
+                # Capture result screenshot
+                time.sleep(0.5)
+                screenshot_after, _ = self._capture_screenshot_cua(step_number)
+
+                # Record turn
+                turn_history.append(TurnRecord(
+                    screenshot_before=screenshot_before,
+                    model_response=vlm_response.text,
+                    actions_summary="; ".join(action_summaries),
+                    results_summary="; ".join(result_summaries),
+                    screenshot_after=screenshot_after,
+                ))
+
+                if self.config.step_delay > 0:
+                    time.sleep(self.config.step_delay)
+
+        except KeyboardInterrupt:
+            self.state = AgentState.PAUSED
+
+        except Exception as e:
+            self.console.print(f"[red]Explore error: {e}[/]")
+            import traceback
+            traceback.print_exc()
+            self.state = AgentState.FAILED
+
+        # Restore handlers
+        signal.signal(signal.SIGINT, prev_sigint)
+        if self._hotkey_monitor:
+            self._hotkey_monitor.stop()
+            self._hotkey_monitor = None
+        if self._cursor_overlay:
+            self._cursor_overlay.stop()
+            self._cursor_overlay = None
+        if self._action_notifier:
+            self._action_notifier.stop()
+            self._action_notifier = None
+
+        # Generate guidebook even if exploration was interrupted
+        self.console.print(f"\n[bold]Generating guidebook ({len(app_map.pages)} pages discovered)...[/]")
+        guidebook_path = generate_guidebook(app_map, output_path)
+        self.console.print(Panel(
+            f"[green]Guidebook saved to: {guidebook_path}[/]\n"
+            f"Pages: {len(app_map.pages)}\n"
+            f"Use with: --guidebook {guidebook_path}",
+            title="Exploration Complete"
+        ))
+
+        return guidebook_path
+
 
     def _capture_screenshot_cua(self, step_number: int) -> Tuple[str, Optional[Path]]:
         """Capture screenshot for CUA mode.

@@ -76,6 +76,16 @@ def run(
         "--display-height",
         help="CUA display height (openai provider only)"
     ),
+    explore: bool = typer.Option(
+        False,
+        "--explore",
+        help="Explore mode: systematically map the app before executing tasks. Generates a guidebook .md file."
+    ),
+    guidebook: Optional[str] = typer.Option(
+        None,
+        "--guidebook",
+        help="Path to a guidebook .md file to use as navigation reference"
+    ),
 ):
     """
     Run the GUI agent to accomplish a task.
@@ -86,6 +96,8 @@ def run(
         rpa-agent run "Fill out the form" --plan --confirm
         rpa-agent run "Play video" -q 30 -s 0.5  # Fast mode with lower quality
         rpa-agent run "Open Chrome" --provider openai --model gpt-5.4 --api-key dummy
+        rpa-agent run "Explore app" --provider openai-vlm --explore --max-steps 100
+        rpa-agent run "Complete training" --provider openai-vlm --guidebook ./guidebooks/app.md
     """
     provider_label = f"{provider}/{model}"
     console.print(Panel.fit(
@@ -139,6 +151,7 @@ def run(
             screenshot_scale=screenshot_scale,
             screenshot_quality=screenshot_quality,
             show_cursor_overlay=not no_overlay,
+            guidebook_path=Path(guidebook) if guidebook else None,
         )
     else:
         vlm_config = VLMConfig(
@@ -164,19 +177,32 @@ def run(
     agent = GUIAgent(config=config, console=console)
 
     try:
-        if plan:
+        if explore:
+            # Explore mode: build a guidebook
+            if provider != "openai-vlm":
+                console.print("[yellow]Explore mode requires --provider openai-vlm. Switching...[/]")
+            # Generate output path from task description
+            safe_name = "".join(c if c.isalnum() or c in " -_" else "" for c in task)[:50].strip().replace(" ", "_")
+            guidebook_out = Path("./guidebooks") / f"{safe_name}.md"
+            guidebook_path = agent.run_explore(
+                app_description=task,
+                output_path=guidebook_out,
+            )
+            console.print(f"\n[bold]Guidebook generated:[/] {guidebook_path}")
+        elif plan:
             steps = agent.run_with_plan(task)
         else:
             steps = agent.run(task)
 
-        # Save history if requested
-        if output:
-            agent.save_history(Path(output))
-            console.print(f"\n[dim]History saved to {output}[/]")
+        if not explore:
+            # Save history if requested
+            if output:
+                agent.save_history(Path(output))
+                console.print(f"\n[dim]History saved to {output}[/]")
 
-        # Summary
-        successful = sum(1 for s in steps if s.action_result and s.action_result.success)
-        console.print(f"\n[bold]Summary:[/] {successful}/{len(steps)} steps successful")
+            # Summary
+            successful = sum(1 for s in steps if s.action_result and s.action_result.success)
+            console.print(f"\n[bold]Summary:[/] {successful}/{len(steps)} steps successful")
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted by user[/]")
