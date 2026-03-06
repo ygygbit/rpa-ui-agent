@@ -231,7 +231,7 @@ class GUIAgent:
             self.openai_vlm = OpenAIVLMClient(self.config.openai_vlm_config)
             self.vlm = None
             self.cua_client = None
-            self.parser = ActionParser()
+            self.parser = None
         else:
             self.vlm = VLMClient(self.config.vlm_config)
             self.parser = ActionParser()
@@ -255,15 +255,7 @@ class GUIAgent:
         if self.config.provider == "openai":
             self._system_prompt = ""  # CUA manages its own prompting
         elif self.config.provider == "openai-vlm":
-            # Use the same prompts as Anthropic provider
-            if self.config.system_prompt:
-                self._system_prompt = self.config.system_prompt
-            elif self.operator:
-                self._system_prompt = SystemPrompts.GUI_AGENT_COMPRESSED_TEMPLATE.replace(
-                    "{{action_space}}", self.operator.action_space()
-                )
-            else:
-                self._system_prompt = SystemPrompts.GUI_AGENT_COMPRESSED
+            self._system_prompt = ""  # CUA-style loop uses built-in prompt
         elif self.config.system_prompt:
             self._system_prompt = self.config.system_prompt
         elif self.operator:
@@ -284,35 +276,14 @@ class GUIAgent:
         screen_info: Optional[Dict[str, int]] = None,
         history: Optional[List[Dict[str, Any]]] = None,
     ):
-        """Dispatch VLM call to the appropriate backend (Anthropic or OpenAI)."""
-        if self.openai_vlm is not None:
-            # OpenAI Responses API path
-            from .vlm.openai_vlm_client import OpenAIVLMResponse
-            # screenshot_data is a tuple (base64_data, media_type)
-            if isinstance(screenshot_data, tuple):
-                base64_data, mt = screenshot_data
-            else:
-                base64_data = screenshot_data
-                mt = vlm_media_type
-            resp = self.openai_vlm.analyze_screenshot(
-                screenshot_base64=base64_data,
-                task=task,
-                screen_info=screen_info,
-                history=history,
-                system_prompt=self._system_prompt,
-                media_type=mt,
-            )
-            # Wrap in a duck-type-compatible object with .text and .usage
-            return resp
-        else:
-            # Anthropic path (default)
-            return self.vlm.analyze_screenshot(
-                screenshot=screenshot_data,
-                task=task,
-                screen_info=screen_info,
-                history=history if history else None,
-                system_prompt=self._system_prompt,
-            )
+        """Dispatch VLM call to the Anthropic backend."""
+        return self.vlm.analyze_screenshot(
+            screenshot=screenshot_data,
+            task=task,
+            screen_info=screen_info,
+            history=history if history else None,
+            system_prompt=self._system_prompt,
+        )
 
     def _on_stop_hotkey(self) -> None:
         """Callback when stop hotkey (Ctrl+Alt) is pressed."""
@@ -1269,9 +1240,11 @@ class GUIAgent:
         Returns:
             List of all steps taken
         """
-        # Dispatch to CUA loop for OpenAI provider
+        # Dispatch to CUA loop for OpenAI providers
         if self.config.provider == "openai":
             return self.run_cua(task, on_step=on_step, on_action=on_action)
+        if self.config.provider == "openai-vlm":
+            return self.run_cua_vlm(task, on_step=on_step, on_action=on_action)
 
         self.state = AgentState.RUNNING
         self.current_task = task
@@ -1606,6 +1579,293 @@ class GUIAgent:
 
         return self.steps
 
+    # ==================== CUA-VLM (GPT-5.4 CUA loop via Responses API) ====================
+
+    def run_cua_vlm(
+        self,
+        task: str,
+        on_step: Optional[Callable[[AgentStep], None]] = None,
+        on_action: Optional[Callable[[AnyAction], bool]] = None
+    ) -> List[AgentStep]:
+        """
+        Run the agent following the official GPT-5.4 CUA loop pattern.
+
+        The model fully controls the flow:
+        1. Capture screenshot → send to model with task + turn history
+        2. Model returns actions[] → execute all in order
+        3. Capture result screenshot → record turn (before, actions, results, after)
+        4. Send new screenshot to model with updated history → repeat
+        5. Until model sets status="done" or max steps reached
+
+        Each turn in history contains:
+        - Screenshot BEFORE actions (compressed JPEG for old turns)
+        - Model's action response
+        - Execution results
+        - Screenshot AFTER actions (compressed JPEG for old turns)
+
+        This gives the model full visual context to learn from past attempts.
+        """
+        self.state = AgentState.RUNNING
+        self.current_task = task
+        self.steps = []
+        self._recent_actions = []
+
+        # Install SIGINT handler
+        prev_sigint = signal.getsignal(signal.SIGINT)
+
+        def _sigint_handler(signum, frame):
+            self.state = AgentState.PAUSED
+            raise KeyboardInterrupt
+
+        signal.signal(signal.SIGINT, _sigint_handler)
+
+        # Start hotkey monitor
+        from .core.hotkey import HotkeyMonitor
+        self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
+        self._hotkey_monitor.start()
+        self.console.print("[dim]Press Ctrl+C or Ctrl+Alt to stop the agent[/]")
+
+        # Start cursor overlay
+        if self.config.show_cursor_overlay:
+            from .core.cursor_overlay import CursorOverlay
+            self._cursor_overlay = CursorOverlay(color="red", size=50, line_width=4)
+            self._cursor_overlay.start()
+
+        # Start action notifier
+        if self.config.show_action_notifier:
+            from .core.action_notifier import ActionNotifier
+            self._action_notifier = ActionNotifier()
+            self._action_notifier.start()
+            self._action_notifier.show_action("thinking", f"CUA-VLM: {task[:50]}...")
+
+        display_w = self.openai_vlm.config.display_width
+        display_h = self.openai_vlm.config.display_height
+
+        self.console.print(Panel(
+            f"[bold]Task:[/] {task}\n[dim]Provider: CUA-VLM ({self.openai_vlm.config.model}), "
+            f"display: {display_w}x{display_h}[/]",
+            title="GUI Agent Started (CUA-VLM Mode)"
+        ))
+
+        from .vlm.openai_vlm_client import TurnRecord
+
+        step_number = 0
+        turn_history: List[TurnRecord] = []
+
+        try:
+            while self.state == AgentState.RUNNING and step_number < self.config.max_steps:
+                # 1. Capture current screenshot (this is the "before" for this turn)
+                step_number += 1
+                if self._action_notifier:
+                    self._action_notifier.show_thinking(step_number)
+                self.console.print(f"\n[dim]Step {step_number}: Capturing screenshot...[/]")
+                screenshot_before, screenshot_path = self._capture_screenshot_cua(step_number)
+
+                # 2. Send to model with turn history
+                self.console.print(f"[dim]Sending to model (history: {len(turn_history)} turns)...[/]")
+                vlm_response = self.openai_vlm.send(
+                    task=task,
+                    current_screenshot=screenshot_before,
+                    turn_history=turn_history,
+                )
+
+                actions_raw = vlm_response.actions
+                status = vlm_response.status
+
+                self.console.print(
+                    f"[dim]Model returned {len(actions_raw)} action(s), status={status}, "
+                    f"tokens: in={vlm_response.usage.get('input_tokens', 0)} "
+                    f"out={vlm_response.usage.get('output_tokens', 0)}[/]"
+                )
+
+                # 3. Check if model says done/fail
+                if status == "done" or status == "fail":
+                    self.state = AgentState.COMPLETED if status == "done" else AgentState.FAILED
+                    try:
+                        parsed = json.loads(vlm_response.text.strip().lstrip("`").lstrip("json").lstrip("`"))
+                        reason = parsed.get("reasoning", vlm_response.text[:200])
+                    except (json.JSONDecodeError, AttributeError):
+                        reason = vlm_response.text[:200]
+                    self.console.print(f"[{'green' if status == 'done' else 'red'}]Model says {status}: {_sanitize_text(reason[:200])}[/]")
+
+                    step = AgentStep(
+                        step_number=step_number,
+                        timestamp=datetime.now(),
+                        screenshot_path=screenshot_path,
+                        vlm_response=vlm_response.text,
+                        action=DoneAction(reasoning=reason, action_type=ActionType.DONE) if status == "done"
+                               else FailAction(reasoning=reason, action_type=ActionType.FAIL),
+                        action_result=ActionResult(success=(status == "done"), action=None),
+                        reasoning=reason,
+                        token_usage=vlm_response.usage,
+                    )
+                    self._display_step(step)
+                    self.steps.append(step)
+                    if on_step:
+                        on_step(step)
+                    break
+
+                # 4. Handle screenshot-only request (model wants to see screen first)
+                is_screenshot_only = (
+                    len(actions_raw) == 1 and
+                    actions_raw[0].get("type") == "screenshot"
+                ) or not actions_raw
+
+                if is_screenshot_only:
+                    self.console.print(f"[dim]Step {step_number}: Model requested screenshot (no actions)[/]")
+                    step = AgentStep(
+                        step_number=step_number,
+                        timestamp=datetime.now(),
+                        screenshot_path=screenshot_path,
+                        vlm_response=vlm_response.text,
+                        action=ScreenshotAction(reasoning="Model requested screenshot", action_type=ActionType.SCREENSHOT),
+                        action_result=ActionResult(success=True, action=ScreenshotAction(action_type=ActionType.SCREENSHOT)),
+                        reasoning="Model requested screenshot",
+                        token_usage=vlm_response.usage,
+                    )
+                    self._display_step(step)
+                    self.steps.append(step)
+                    if on_step:
+                        on_step(step)
+
+                    # Record as a turn with identical before/after screenshots
+                    turn_history.append(TurnRecord(
+                        screenshot_before=screenshot_before,
+                        model_response=vlm_response.text,
+                        actions_summary="screenshot request (no actions executed)",
+                        results_summary="Screenshot captured",
+                        screenshot_after=screenshot_before,  # Same — nothing changed
+                    ))
+                    continue
+
+                # 5. Map and execute CUA actions
+                mapped_actions = map_cua_actions(actions_raw)
+                for action in mapped_actions:
+                    self._rescale_action_coords(action)
+
+                action_summaries = []
+                result_summaries = []
+
+                for i, action in enumerate(mapped_actions):
+                    if self.state != AgentState.RUNNING:
+                        break
+
+                    # Show in notifier
+                    if self._action_notifier:
+                        detail = self._get_action_detail(action)
+                        self._action_notifier.show_step(step_number, action.action_type.value, detail)
+
+                    # Confirm callback
+                    if on_action and not on_action(action):
+                        self.console.print("[yellow]Action skipped by callback[/]")
+                        action_summaries.append(f"{action.action_type.value}: SKIPPED")
+                        result_summaries.append("skipped by user")
+                        continue
+
+                    # Execute
+                    if isinstance(action, ScreenshotAction):
+                        self.console.print(f"[dim]  Action {i+1}/{len(mapped_actions)}: screenshot (no-op)[/]")
+                        result = ActionResult(success=True, action=action)
+                    else:
+                        self.console.print(f"[dim]  Action {i+1}/{len(mapped_actions)}: {action.action_type.value}[/]")
+                        result = self._execute_action(action)
+
+                    action_desc = action.action_type.value
+                    if hasattr(action, 'x') and hasattr(action, 'y'):
+                        action_desc += f" at ({getattr(action, 'x', '?')}, {getattr(action, 'y', '?')})"
+                    if hasattr(action, 'text'):
+                        action_desc += f" text='{getattr(action, 'text', '')[:30]}'"
+                    if hasattr(action, 'key'):
+                        action_desc += f" key={getattr(action, 'key', '')}"
+                    action_summaries.append(action_desc)
+
+                    if result.success:
+                        result_summaries.append(f"{action.action_type.value}: OK")
+                    else:
+                        result_summaries.append(f"{action.action_type.value}: FAILED - {result.error}")
+
+                    # Only create AgentStep for the first action (others are batched)
+                    if i == 0:
+                        step = AgentStep(
+                            step_number=step_number,
+                            timestamp=datetime.now(),
+                            screenshot_path=screenshot_path,
+                            vlm_response=vlm_response.text,
+                            action=action,
+                            action_result=result,
+                            reasoning=action.reasoning,
+                            token_usage=vlm_response.usage,
+                        )
+                        self._display_step(step)
+                        self.steps.append(step)
+                        if on_step:
+                            on_step(step)
+
+                if self.state != AgentState.RUNNING:
+                    break
+
+                # 6. Wait for UI to settle, then capture result screenshot
+                time.sleep(0.5)
+                self.console.print("[dim]Capturing result screenshot...[/]")
+                screenshot_after, screenshot_after_path = self._capture_screenshot_cua(step_number)
+
+                # Update last step's screenshot to the after screenshot
+                if self.steps:
+                    self.steps[-1].screenshot_path = screenshot_after_path
+
+                # 7. Record this turn in history
+                turn_history.append(TurnRecord(
+                    screenshot_before=screenshot_before,
+                    model_response=vlm_response.text,
+                    actions_summary="; ".join(action_summaries),
+                    results_summary="; ".join(result_summaries),
+                    screenshot_after=screenshot_after,
+                ))
+
+                self.console.print(
+                    f"[dim]Turn recorded. History: {len(turn_history)} turns "
+                    f"(sending last {min(len(turn_history), self.openai_vlm.MAX_HISTORY_TURNS)})[/]"
+                )
+
+                # Step delay
+                if self.config.step_delay > 0:
+                    time.sleep(self.config.step_delay)
+
+        except KeyboardInterrupt:
+            self.state = AgentState.PAUSED
+
+        except Exception as e:
+            self.console.print(f"[red]CUA-VLM error: {e}[/]")
+            import traceback
+            traceback.print_exc()
+            self.state = AgentState.FAILED
+
+        # Restore SIGINT handler
+        signal.signal(signal.SIGINT, prev_sigint)
+
+        # Stop overlays and hotkey monitor
+        if self._hotkey_monitor:
+            self._hotkey_monitor.stop()
+            self._hotkey_monitor = None
+        if self._cursor_overlay:
+            self._cursor_overlay.stop()
+            self._cursor_overlay = None
+        if self._action_notifier:
+            self._action_notifier.stop()
+            self._action_notifier = None
+
+        # Final status
+        if self.state == AgentState.COMPLETED:
+            self.console.print(Panel("[green]Task completed successfully![/]", title="CUA-VLM Done"))
+        elif self.state == AgentState.FAILED:
+            self.console.print(Panel("[red]Task failed[/]", title="CUA-VLM Failed"))
+        elif self.state == AgentState.PAUSED:
+            self.console.print(Panel("[yellow]Interrupted by user[/]", title="CUA-VLM Stopped"))
+        else:
+            self.console.print(Panel("[yellow]Max steps reached[/]", title="CUA-VLM Stopped"))
+
+        return self.steps
+
     # ==================== CUA (OpenAI GPT-5.4 Computer Use) ====================
 
     def _capture_screenshot_cua(self, step_number: int) -> Tuple[str, Optional[Path]]:
@@ -1644,10 +1904,17 @@ class GUIAgent:
             screenshot_path = self.config.screenshot_dir / f"step_{step_number:03d}_{timestamp}.png"
             img.save(screenshot_path, format="PNG", optimize=True)
 
-        # Scale to exact display_width x display_height from CUA config
+        # Scale to exact display_width x display_height from config
         # The model expects images matching the declared display dimensions
-        target_width = self.cua_client.config.display_width if self.cua_client else 1920
-        target_height = self.cua_client.config.display_height if self.cua_client else 1080
+        if self.cua_client:
+            target_width = self.cua_client.config.display_width
+            target_height = self.cua_client.config.display_height
+        elif self.openai_vlm:
+            target_width = self.openai_vlm.config.display_width
+            target_height = self.openai_vlm.config.display_height
+        else:
+            target_width = 1920
+            target_height = 1080
         if original_w != target_width or original_h != target_height:
             img = img.resize((target_width, target_height), Image.LANCZOS)
             # Store scale factors for coordinate mapping:

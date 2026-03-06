@@ -124,6 +124,8 @@ def run(
             api_key=api_key or "dummy",
             model=model if model != DEFAULT_MODEL else "gpt-5.4",
             temperature=0.1,
+            display_width=display_width,
+            display_height=display_height,
         )
         config = AgentConfig(
             provider="openai-vlm",
