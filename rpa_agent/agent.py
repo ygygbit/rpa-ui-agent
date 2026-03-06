@@ -12,6 +12,8 @@ The Agent class ties together:
 import base64
 import io
 import json
+import os
+import signal
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -238,8 +240,15 @@ class GUIAgent:
 
     def _on_stop_hotkey(self) -> None:
         """Callback when stop hotkey (Ctrl+Alt) is pressed."""
+        if self.state != AgentState.RUNNING:
+            return
         self.console.print("\n[yellow]Stop hotkey detected (Ctrl+Alt). Stopping agent...[/]")
-        self.state = AgentState.FAILED
+        self.state = AgentState.PAUSED
+        # Stop the monitor immediately so it won't fire again
+        if self._hotkey_monitor:
+            self._hotkey_monitor._running = False
+        # Send SIGINT to main thread to interrupt blocking I/O (e.g. HTTP calls)
+        os.kill(os.getpid(), signal.SIGINT)
 
     def _capture_screenshot(self, step_number: int) -> Tuple[str, Path, Dict[str, int]]:
         """Capture screenshot and return base64, path, and screen info."""
@@ -1154,11 +1163,20 @@ class GUIAgent:
         self._conversation_history = []
         self._recent_actions = []
 
+        # Install SIGINT handler so Ctrl+C interrupts blocking I/O on Windows
+        prev_sigint = signal.getsignal(signal.SIGINT)
+
+        def _sigint_handler(signum, frame):
+            self.state = AgentState.PAUSED
+            raise KeyboardInterrupt
+
+        signal.signal(signal.SIGINT, _sigint_handler)
+
         # Start hotkey monitor for stopping agent (Ctrl+Alt)
         from .core.hotkey import HotkeyMonitor
         self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
         self._hotkey_monitor.start()
-        self.console.print("[dim]Press Ctrl+Alt to stop the agent[/]")
+        self.console.print("[dim]Press Ctrl+C or Ctrl+Alt to stop the agent[/]")
 
         # Start cursor overlay for visual feedback
         if self.config.show_cursor_overlay:
@@ -1437,10 +1455,17 @@ class GUIAgent:
                     else:
                         time.sleep(self.config.step_delay)
 
+            except KeyboardInterrupt:
+                self.state = AgentState.PAUSED
+                break
+
             except Exception as e:
                 self.console.print(f"[red]Error in step {step_number}: {e}[/]")
                 self.state = AgentState.FAILED
                 break
+
+        # Restore original SIGINT handler
+        signal.signal(signal.SIGINT, prev_sigint)
 
         # Stop overlays and hotkey monitor
         if self._hotkey_monitor:
@@ -1458,6 +1483,8 @@ class GUIAgent:
             self.console.print(Panel("[green]Task completed successfully![/]", title="Done"))
         elif self.state == AgentState.FAILED:
             self.console.print(Panel("[red]Task failed[/]", title="Failed"))
+        elif self.state == AgentState.PAUSED:
+            self.console.print(Panel("[yellow]Interrupted by user[/]", title="Stopped"))
         else:
             self.console.print(Panel("[yellow]Max steps reached[/]", title="Stopped"))
 
