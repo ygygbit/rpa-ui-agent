@@ -95,16 +95,14 @@ Return a JSON object with:
 7. Check for elements below the fold by scrolling down on each page
 8. When you've visited all discoverable pages and documented all elements, set status="done"
 
-## Rules
+## IMPORTANT: Stay Focused
 
-1. Be THOROUGH — document every interactable element you can see
-2. Use unique, consistent page_ids (e.g., "main_menu", "section_1", "quiz_section_2")
-3. Note which elements are disabled/locked and what might unlock them
-4. Pay attention to progress indicators, completion states
-5. Don't try to actually COMPLETE tasks (like watch full videos) — just document their existence
-6. For videos, note their existence and approximate duration if visible
-7. If a section is locked, note what's needed to unlock it
-8. After exploring a page fully, navigate to the NEXT unexplored page
+- ONLY explore pages that are PART OF the target application
+- Do NOT follow links to unrelated courses, external sites, or other apps
+- If you see "related courses" or "recommended" items, document them as elements but do NOT click into them
+- If you accidentally navigate away from the target app, go back immediately
+- The goal is to map ONE application thoroughly, not the entire website
+- Once you've explored all sections/pages within the target app, set status="done"
 """
 
 
