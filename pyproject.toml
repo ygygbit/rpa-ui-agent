@@ -12,6 +12,7 @@ keywords = ["rpa", "ui-automation", "vlm", "gui-agent", "computer-use"]
 
 dependencies = [
     "anthropic>=0.40.0",
+    "openai>=2.20.0",
     "pillow>=10.0.0",
     "pywin32>=306",
     "mss>=9.0.0",

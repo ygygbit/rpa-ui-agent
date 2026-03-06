@@ -12,7 +12,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
 from .agent import GUIAgent, AgentConfig
-from .vlm import VLMConfig, AVAILABLE_MODELS, DEFAULT_MODEL
+from .vlm import VLMConfig, CUAConfig, AVAILABLE_MODELS, DEFAULT_MODEL
 
 app = typer.Typer(
     name="rpa-agent",
@@ -23,11 +23,7 @@ console = Console()
 
 
 def model_callback(value: str) -> str:
-    """Validate model selection."""
-    if value not in AVAILABLE_MODELS:
-        raise typer.BadParameter(
-            f"Invalid model. Available: {', '.join(AVAILABLE_MODELS)}"
-        )
+    """Validate model selection (relaxed — accepts any string for CUA models)."""
     return value
 
 
@@ -64,6 +60,21 @@ def run(
         help=f"Model name. Available: {', '.join(AVAILABLE_MODELS)}",
         callback=model_callback
     ),
+    provider: str = typer.Option(
+        "anthropic",
+        "--provider",
+        help="Provider: 'anthropic' (VLM) or 'openai' (GPT-5.4 CUA)"
+    ),
+    display_width: int = typer.Option(
+        1600,
+        "--display-width",
+        help="CUA display width (openai provider only)"
+    ),
+    display_height: int = typer.Option(
+        900,
+        "--display-height",
+        help="CUA display height (openai provider only)"
+    ),
 ):
     """
     Run the GUI agent to accomplish a task.
@@ -73,31 +84,57 @@ def run(
         rpa-agent run "Click the search button" --max-steps 10 --model claude-opus-4.6-fast
         rpa-agent run "Fill out the form" --plan --confirm
         rpa-agent run "Play video" -q 30 -s 0.5  # Fast mode with lower quality
+        rpa-agent run "Open Chrome" --provider openai --model gpt-5.4 --api-key dummy
     """
+    provider_label = f"{provider}/{model}"
     console.print(Panel.fit(
-        f"[bold blue]RPA UI Agent[/]\nVision-Language Model based GUI Automation\n[dim]Model: {model}[/]",
+        f"[bold blue]RPA UI Agent[/]\nVision-Language Model based GUI Automation\n[dim]Provider: {provider_label}[/]",
         border_style="blue"
     ))
 
-    # Create configuration
-    vlm_config = VLMConfig(
-        base_url=base_url,
-        api_key=api_key or "",
-        model=model
-    )
-
-    config = AgentConfig(
-        vlm_config=vlm_config,
-        max_steps=max_steps,
-        step_delay=step_delay,
-        dry_run=dry_run,
-        confirm_actions=confirm,
-        save_screenshots=save_screenshots,
-        screenshot_dir=Path(screenshot_dir),
-        screenshot_scale=screenshot_scale,
-        screenshot_quality=screenshot_quality,
-        show_cursor_overlay=not no_overlay
-    )
+    # Create configuration based on provider
+    if provider == "openai":
+        cua_config = CUAConfig(
+            base_url=base_url if base_url != "http://localhost:23333/api/anthropic"
+                else "http://localhost:23333/api/openai/v1",
+            api_key=api_key or "dummy",
+            model=model if model != DEFAULT_MODEL else "gpt-5.4",
+            display_width=display_width,
+            display_height=display_height,
+            environment="windows",
+        )
+        config = AgentConfig(
+            provider="openai",
+            cua_config=cua_config,
+            max_steps=max_steps,
+            step_delay=step_delay,
+            dry_run=dry_run,
+            confirm_actions=confirm,
+            save_screenshots=save_screenshots,
+            screenshot_dir=Path(screenshot_dir),
+            screenshot_scale=screenshot_scale,
+            screenshot_quality=screenshot_quality,
+            show_cursor_overlay=not no_overlay,
+        )
+    else:
+        vlm_config = VLMConfig(
+            base_url=base_url,
+            api_key=api_key or "",
+            model=model,
+        )
+        config = AgentConfig(
+            provider="anthropic",
+            vlm_config=vlm_config,
+            max_steps=max_steps,
+            step_delay=step_delay,
+            dry_run=dry_run,
+            confirm_actions=confirm,
+            save_screenshots=save_screenshots,
+            screenshot_dir=Path(screenshot_dir),
+            screenshot_scale=screenshot_scale,
+            screenshot_quality=screenshot_quality,
+            show_cursor_overlay=not no_overlay,
+        )
 
     # Create and run agent
     agent = GUIAgent(config=config, console=console)

@@ -12,6 +12,7 @@ The Agent class ties together:
 import base64
 import io
 import json
+import math
 import os
 import signal
 import time
@@ -36,8 +37,9 @@ from .actions.definitions import (
     FocusWindowAction, WaitAction, ScreenshotAction,
     DoneAction, FailAction
 )
-from .vlm import VLMClient, VLMConfig
+from .vlm import VLMClient, VLMConfig, CUAClient, CUAConfig
 from .vlm.prompts import SystemPrompts
+from .vlm.cua_action_mapper import map_cua_actions
 from .operator import Operator
 
 
@@ -81,8 +83,14 @@ class ActionResult:
 @dataclass
 class AgentConfig:
     """Configuration for the GUI agent."""
-    # VLM settings
+    # Provider: "anthropic" (default VLM) or "openai" (GPT-5.4 CUA)
+    provider: str = "anthropic"
+
+    # VLM settings (used when provider="anthropic")
     vlm_config: VLMConfig = field(default_factory=VLMConfig)
+
+    # CUA settings (used when provider="openai")
+    cua_config: Optional[CUAConfig] = None
 
     # Execution settings
     max_steps: int = 50
@@ -95,7 +103,8 @@ class AgentConfig:
     # VLM image settings
     vlm_image_format: str = "jpeg"  # "png" or "jpeg" — format sent to VLM (jpeg is 76% smaller)
     vlm_image_quality: int = 2  # JPEG quality for VLM images (1-100, lower = fewer tokens)
-    vlm_max_edge: int = 1120  # Max long edge for VLM images (Exp 76: -30% tokens vs 1344px)
+    vlm_max_edge: int = 1568  # Max long edge for VLM images (Anthropic API limit)
+    vlm_max_pixels: int = 1_192_464  # Max total pixels (Anthropic ~1600 token budget)
 
     # Conversation history
     max_history_turns: int = 10  # Max messages to send to VLM (0 = unlimited, 10 = last 5 exchanges)
@@ -209,8 +218,15 @@ class GUIAgent:
             self.controller = UIController()
             self.window_manager = WindowManager()
 
-        self.vlm = VLMClient(self.config.vlm_config)
-        self.parser = ActionParser()
+        # Initialize VLM or CUA client based on provider
+        if self.config.provider == "openai":
+            self.cua_client = CUAClient(self.config.cua_config)
+            self.vlm = None
+            self.parser = None
+        else:
+            self.vlm = VLMClient(self.config.vlm_config)
+            self.parser = ActionParser()
+            self.cua_client = None
 
         # Visual feedback overlays
         self._cursor_overlay = None
@@ -225,8 +241,10 @@ class GUIAgent:
         self._recent_actions: List[str] = []  # Track recent actions for stuck detection
         self._vlm_scale_factor: float = 1.0  # Ratio of original/VLM image size
 
-        # Build system prompt — config override > operator compressed template > default compressed
-        if self.config.system_prompt:
+        # Build system prompt — only needed for Anthropic provider
+        if self.config.provider == "openai":
+            self._system_prompt = ""  # CUA manages its own prompting
+        elif self.config.system_prompt:
             self._system_prompt = self.config.system_prompt
         elif self.operator:
             self._system_prompt = SystemPrompts.GUI_AGENT_COMPRESSED_TEMPLATE.replace(
@@ -286,24 +304,48 @@ class GUIAgent:
             img.save(screenshot_path, format="PNG", optimize=True)
 
         # Resize screenshot for VLM to avoid coordinate mismatch.
-        # VLM APIs (Anthropic) internally resize images with long edge > 1568px.
-        # If we send a 1920x1080 image with grid labels at pixel positions,
+        # VLM APIs (Anthropic) internally resize images with long edge > 1568px
+        # and a total pixel budget of ~1,192,464. If we send a raw screenshot
         # the VLM sees a downscaled image where visual positions don't match
-        # the grid labels, causing systematic coordinate errors (~30% off).
-        # Fix: resize FIRST, then draw grid with labels showing ORIGINAL
-        # screen coordinates mapped to the resized pixel positions.
+        # the grid labels, causing systematic coordinate errors.
+        # Fix: resize FIRST to fit within both constraints (long edge AND pixel
+        # budget), then draw grid with labels showing ORIGINAL screen
+        # coordinates mapped to the resized pixel positions.
         vlm_img = img
         original_w, original_h = img.size
         max_edge = self.config.vlm_max_edge
+        max_pixels = self.config.vlm_max_pixels
         scale_factor = 1.0
+
+        # Constraint 1: long edge must not exceed max_edge
         if max(original_w, original_h) > max_edge:
-            scale_factor = max_edge / max(original_w, original_h)
+            scale_factor = min(scale_factor, max_edge / max(original_w, original_h))
+
+        # Constraint 2: total pixels must not exceed budget
+        current_pixels = original_w * original_h
+        if current_pixels > max_pixels:
+            scale_factor = min(scale_factor, math.sqrt(max_pixels / current_pixels))
+
+        if scale_factor < 1.0:
             new_w = round(original_w * scale_factor)
             new_h = round(original_h * scale_factor)
             vlm_img = img.resize((new_w, new_h), Image.LANCZOS)
 
         # Store inverse scale so parsed VLM coordinates can be mapped back
         self._vlm_scale_factor = 1.0 / scale_factor
+
+        # Update screen_info to match the VLM image dimensions so the VLM
+        # reports coordinates in image-pixel space (which _rescale_action_coords
+        # will then map back to original screen coordinates).
+        screen_info = {
+            "width": vlm_img.width,
+            "height": vlm_img.height
+        }
+        # Keep original screen size for coordinate validation (after rescale)
+        original_screen_info = {
+            "width": original_w,
+            "height": original_h
+        }
 
         # Apply coordinate grid overlay for VLM (not saved to disk)
         if self.config.show_coordinate_grid:
@@ -324,7 +366,7 @@ class GUIAgent:
             vlm_img.save(buffer, format="PNG", optimize=True)
         base64_img = base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
 
-        return base64_img, screenshot_path, screen_info
+        return base64_img, screenshot_path, screen_info, original_screen_info
 
     def _rescale_action_coords(self, action: AnyAction) -> None:
         """Scale VLM-reported coordinates from image space to screen space.
@@ -1157,6 +1199,10 @@ class GUIAgent:
         Returns:
             List of all steps taken
         """
+        # Dispatch to CUA loop for OpenAI provider
+        if self.config.provider == "openai":
+            return self.run_cua(task, on_step=on_step, on_action=on_action)
+
         self.state = AgentState.RUNNING
         self.current_task = task
         self.steps = []
@@ -1237,7 +1283,7 @@ class GUIAgent:
 
                 # 1. Capture screenshot
                 self.console.print(f"\n[dim]Step {step_number}: Capturing screenshot...[/]")
-                base64_img, screenshot_path, screen_info = self._capture_screenshot(step_number)
+                base64_img, screenshot_path, screen_info, original_screen_info = self._capture_screenshot(step_number)
 
                 # 2. Analyze with VLM
                 self.console.print("[dim]Analyzing screenshot...[/]")
@@ -1315,7 +1361,7 @@ class GUIAgent:
                 retry_count = 0
 
                 # 3.25. Validate coordinates before execution
-                coord_warning = self._validate_coordinates(action, screen_info)
+                coord_warning = self._validate_coordinates(action, original_screen_info)
                 if coord_warning:
                     self.console.print(f"[yellow]{coord_warning[:100]}...[/]")
                     # Don't execute — re-query VLM with the warning
@@ -1490,6 +1536,246 @@ class GUIAgent:
 
         return self.steps
 
+    # ==================== CUA (OpenAI GPT-5.4 Computer Use) ====================
+
+    def _capture_screenshot_cua(self, step_number: int) -> Tuple[str, Optional[Path]]:
+        """Capture screenshot for CUA mode (no resize, PNG, full resolution)."""
+        # Pause overlays to prevent them from appearing in screenshot
+        if self._cursor_overlay:
+            self._cursor_overlay.pause()
+        if self._action_notifier:
+            self._action_notifier.pause()
+
+        time.sleep(0.05)
+
+        # Capture screenshot
+        if self.operator:
+            img = self.operator.screenshot()
+        else:
+            img = self.screen.capture(scale=self.config.screenshot_scale)
+
+        # Resume overlays
+        if self._cursor_overlay:
+            self._cursor_overlay.resume()
+        if self._action_notifier:
+            self._action_notifier.resume()
+
+        # Save to disk
+        screenshot_path = None
+        if self.config.save_screenshots:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            screenshot_path = self.config.screenshot_dir / f"step_{step_number:03d}_{timestamp}.png"
+            img.save(screenshot_path, format="PNG", optimize=True)
+
+        # Encode as base64 PNG (no resize for CUA — supports up to 10.24M pixels)
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        base64_img = base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
+
+        return base64_img, screenshot_path
+
+    def run_cua(
+        self,
+        task: str,
+        on_step: Optional[Callable[[AgentStep], None]] = None,
+        on_action: Optional[Callable[[AnyAction], bool]] = None
+    ) -> List[AgentStep]:
+        """
+        Run the agent using GPT-5.4 Computer Use Agent (CUA) mode.
+
+        The CUA model drives the loop: it returns structured computer_call
+        items with batched actions[], we execute them, send a screenshot,
+        and repeat until the model stops issuing computer_calls.
+
+        Args:
+            task: Natural language task description
+            on_step: Callback after each step
+            on_action: Callback before action execution
+
+        Returns:
+            List of all steps taken
+        """
+        self.state = AgentState.RUNNING
+        self.current_task = task
+        self.steps = []
+
+        # Install SIGINT handler so Ctrl+C interrupts blocking I/O on Windows
+        prev_sigint = signal.getsignal(signal.SIGINT)
+
+        def _sigint_handler(signum, frame):
+            self.state = AgentState.PAUSED
+            raise KeyboardInterrupt
+
+        signal.signal(signal.SIGINT, _sigint_handler)
+
+        # Start hotkey monitor for stopping agent (Ctrl+Alt)
+        from .core.hotkey import HotkeyMonitor
+        self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
+        self._hotkey_monitor.start()
+        self.console.print("[dim]Press Ctrl+C or Ctrl+Alt to stop the agent[/]")
+
+        # Start cursor overlay for visual feedback
+        if self.config.show_cursor_overlay:
+            from .core.cursor_overlay import CursorOverlay
+            self._cursor_overlay = CursorOverlay(color="red", size=50, line_width=4)
+            self._cursor_overlay.start()
+
+        # Start action notifier
+        if self.config.show_action_notifier:
+            from .core.action_notifier import ActionNotifier
+            self._action_notifier = ActionNotifier()
+            self._action_notifier.start()
+            self._action_notifier.show_action("thinking", f"CUA: {task[:50]}...")
+
+        self.console.print(Panel(
+            f"[bold]Task:[/] {task}\n[dim]Provider: OpenAI CUA ({self.cua_client.config.model})[/]",
+            title="GUI Agent Started (CUA Mode)"
+        ))
+
+        step_number = 0
+
+        try:
+            # Send initial task to CUA
+            self.console.print("[dim]Sending task to CUA model...[/]")
+            response = self.cua_client.start(task)
+
+            while self.state == AgentState.RUNNING and step_number < self.config.max_steps:
+                # Extract computer_call from response
+                computer_call = self.cua_client.extract_computer_call(response)
+
+                if computer_call is None:
+                    # Model is done — extract final text
+                    final_text = self.cua_client.extract_text(response)
+                    self.state = AgentState.COMPLETED
+                    if final_text:
+                        self.console.print(f"[green]CUA final output:[/] {_sanitize_text(final_text[:200])}")
+                    break
+
+                # Get batched actions from the computer_call
+                actions_raw = computer_call.actions if hasattr(computer_call, 'actions') else []
+                if not actions_raw:
+                    # Empty actions — just send screenshot
+                    self.console.print("[dim]CUA requested screenshot (no actions)[/]")
+                    step_number += 1
+                    base64_img, screenshot_path = self._capture_screenshot_cua(step_number)
+                    step = AgentStep(
+                        step_number=step_number,
+                        timestamp=datetime.now(),
+                        screenshot_path=screenshot_path,
+                        vlm_response="screenshot request",
+                        action=ScreenshotAction(reasoning="CUA screenshot request", action_type=ActionType.SCREENSHOT),
+                        action_result=ActionResult(success=True, action=ScreenshotAction(action_type=ActionType.SCREENSHOT)),
+                        reasoning="CUA requested initial screenshot",
+                    )
+                    self._display_step(step)
+                    self.steps.append(step)
+                    if on_step:
+                        on_step(step)
+                    response = self.cua_client.send_screenshot(
+                        previous_response_id=response.id,
+                        call_id=computer_call.call_id,
+                        screenshot_base64=base64_img,
+                    )
+                    continue
+
+                # Map CUA actions to our Action types
+                mapped_actions = map_cua_actions(actions_raw)
+
+                # Execute all actions in order (batched)
+                for i, action in enumerate(mapped_actions):
+                    step_number += 1
+
+                    if self.state != AgentState.RUNNING:
+                        break
+
+                    # Show in notifier
+                    if self._action_notifier:
+                        detail = self._get_action_detail(action)
+                        self._action_notifier.show_step(step_number, action.action_type.value, detail)
+
+                    # Confirm callback
+                    if on_action and not on_action(action):
+                        self.console.print("[yellow]Action skipped by callback[/]")
+                        continue
+
+                    # Skip execution for screenshot actions (just capture)
+                    if isinstance(action, ScreenshotAction):
+                        self.console.print(f"[dim]Step {step_number}: CUA screenshot request[/]")
+                        result = ActionResult(success=True, action=action)
+                    else:
+                        self.console.print(f"[dim]Step {step_number}: Executing {action.action_type.value}[/]")
+                        result = self._execute_action(action)
+
+                    step = AgentStep(
+                        step_number=step_number,
+                        timestamp=datetime.now(),
+                        screenshot_path=None,
+                        vlm_response=str(getattr(actions_raw[i], 'type', '')),
+                        action=action,
+                        action_result=result,
+                        reasoning=action.reasoning,
+                    )
+
+                    self._display_step(step)
+                    self.steps.append(step)
+                    if on_step:
+                        on_step(step)
+
+                if self.state != AgentState.RUNNING:
+                    break
+
+                # Capture screenshot after all actions executed
+                self.console.print("[dim]Capturing screenshot for CUA...[/]")
+                base64_img, screenshot_path = self._capture_screenshot_cua(step_number)
+
+                # Update the last step's screenshot path
+                if self.steps:
+                    self.steps[-1].screenshot_path = screenshot_path
+
+                # Send screenshot back to CUA
+                response = self.cua_client.send_screenshot(
+                    previous_response_id=response.id,
+                    call_id=computer_call.call_id,
+                    screenshot_base64=base64_img,
+                )
+
+                # Step delay
+                if self.config.step_delay > 0:
+                    time.sleep(self.config.step_delay)
+
+        except KeyboardInterrupt:
+            self.state = AgentState.PAUSED
+
+        except Exception as e:
+            self.console.print(f"[red]CUA error: {e}[/]")
+            self.state = AgentState.FAILED
+
+        # Restore original SIGINT handler
+        signal.signal(signal.SIGINT, prev_sigint)
+
+        # Stop overlays and hotkey monitor
+        if self._hotkey_monitor:
+            self._hotkey_monitor.stop()
+            self._hotkey_monitor = None
+        if self._cursor_overlay:
+            self._cursor_overlay.stop()
+            self._cursor_overlay = None
+        if self._action_notifier:
+            self._action_notifier.stop()
+            self._action_notifier = None
+
+        # Final status
+        if self.state == AgentState.COMPLETED:
+            self.console.print(Panel("[green]Task completed successfully![/]", title="CUA Done"))
+        elif self.state == AgentState.FAILED:
+            self.console.print(Panel("[red]Task failed[/]", title="CUA Failed"))
+        elif self.state == AgentState.PAUSED:
+            self.console.print(Panel("[yellow]Interrupted by user[/]", title="CUA Stopped"))
+        else:
+            self.console.print(Panel("[yellow]Max steps reached[/]", title="CUA Stopped"))
+
+        return self.steps
+
     def run_with_plan(
         self,
         task: str,
@@ -1510,7 +1796,7 @@ class GUIAgent:
         self.console.print("[dim]Creating execution plan...[/]")
 
         # Capture initial screenshot
-        base64_img, screenshot_path, screen_info = self._capture_screenshot(0)
+        base64_img, screenshot_path, screen_info, _ = self._capture_screenshot(0)
 
         # Get plan from VLM
         plan_response = self.vlm.plan_task(
@@ -1534,7 +1820,7 @@ class GUIAgent:
         Returns:
             (x, y) coordinates or None if not found
         """
-        base64_img, screenshot_path, screen_info = self._capture_screenshot(0)
+        base64_img, screenshot_path, screen_info, _ = self._capture_screenshot(0)
 
         response = self.vlm.ground_element(
             screenshot=screenshot_path or base64_img,
