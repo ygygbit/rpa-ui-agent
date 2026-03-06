@@ -58,10 +58,21 @@ class HotkeyMonitor:
 
     def _monitor_loop(self):
         """Main monitoring loop."""
+        # Grace period: wait for all hotkey keys to be released before monitoring.
+        # This prevents false triggers from leftover key states.
+        grace_start = time.monotonic()
+        while self._running and (time.monotonic() - grace_start) < 2.0:
+            if not self._check_hotkey():
+                break  # Keys are released, start monitoring
+            time.sleep(self.check_interval)
+
         while self._running:
             if self._check_hotkey() and not self._triggered:
-                self._triggered = True
-                self.callback()
+                # Debounce: require keys held for 200ms to avoid spurious triggers
+                time.sleep(0.2)
+                if self._check_hotkey():
+                    self._triggered = True
+                    self.callback()
                 # Don't trigger again until keys are released
             elif not self._check_hotkey():
                 self._triggered = False

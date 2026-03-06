@@ -77,8 +77,11 @@ Task complete:
 6. When a task is done, set status to "done" and empty actions.
 7. If stuck, try a different approach rather than repeating the same failed action.
 8. Look at the previous screenshots to see what changed after your actions. If the screen didn't change, your action likely missed the target — adjust coordinates or try a different approach.
-9. For video/timed content: if you see a video playing and a button (like NEXT) is disabled, use {"type": "wait", "seconds": 30} to wait for the video to finish. Then take another screenshot to check. Repeat until the button enables. Do NOT click a disabled button — it won't work.
+9. For video/timed content: if you see a video playing and a button (like NEXT) is disabled, use {"type": "wait", "seconds": 60} to wait for the video to finish. Then take another screenshot to check. Repeat until the button enables. Do NOT click a disabled button — it won't work.
 10. For training courses with gated sections: always wait for the current section's content to fully complete before trying to advance. Look for visual cues like progress bars, enabled/disabled button states, and checkmarks.
+11. AFTER EVERY WAIT: your FIRST priority is to check whether a navigation button (like NEXT) has become enabled. Look at the bottom-right area of the player. If NEXT is enabled (bright, not grayed out), click it IMMEDIATELY. Do not click Play again — the video is already done.
+12. NEVER repeat the exact same action more than twice in a row. If you've clicked the same area or done the same wait twice and nothing changed, try something DIFFERENT: check other parts of the screen, scroll, or look for alternative UI elements.
+13. Be EFFICIENT with actions. You can batch multiple actions in one turn. For example, instead of clicking Play in one turn and waiting in the next, do both in one turn: [{"type": "click", ...}, {"type": "wait", "seconds": 90}, {"type": "screenshot"}]. This saves turns.
 """
 
 
@@ -164,20 +167,32 @@ class OpenAIVLMClient:
         self._responses_url = f"{self.config.base_url.rstrip('/')}/responses"
 
     def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Send a POST request to the Responses API endpoint."""
+        """Send a POST request to the Responses API endpoint with retry on transient errors."""
+        import time
+        from urllib.error import HTTPError
+
         body = json.dumps(payload).encode("utf-8")
-        req = Request(
-            self._responses_url,
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.config.api_key}",
-            },
-            method="POST",
-        )
-        with urlopen(req, timeout=180) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        return data
+        max_retries = 3
+        for attempt in range(max_retries):
+            req = Request(
+                self._responses_url,
+                data=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.config.api_key}",
+                },
+                method="POST",
+            )
+            try:
+                with urlopen(req, timeout=180) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                return data
+            except HTTPError as e:
+                if e.code in (429, 502, 503, 504) and attempt < max_retries - 1:
+                    wait_time = 2 ** attempt * 5  # 5s, 10s, 20s
+                    time.sleep(wait_time)
+                    continue
+                raise
 
     def send(
         self,
@@ -186,6 +201,7 @@ class OpenAIVLMClient:
         turn_history: List[TurnRecord],
         system_prompt_override: Optional[str] = None,
         extra_context: Optional[str] = None,
+        turn_hint: Optional[str] = None,
     ) -> OpenAIVLMResponse:
         """
         Send the current state to the model with full turn history.
@@ -196,6 +212,8 @@ class OpenAIVLMClient:
             turn_history: Previous turns for context (last N kept).
             system_prompt_override: Replace the default CUA system prompt entirely.
             extra_context: Additional context appended to system prompt (e.g., guidebook).
+            turn_hint: Per-turn hint injected into the current screenshot message
+                       (e.g., stuck detection nudge).
 
         Returns:
             OpenAIVLMResponse with parsed actions and status.
@@ -204,6 +222,7 @@ class OpenAIVLMClient:
             task, current_screenshot, turn_history,
             system_prompt_override=system_prompt_override,
             extra_context=extra_context,
+            turn_hint=turn_hint,
         )
 
         payload: Dict[str, Any] = {
@@ -238,6 +257,7 @@ class OpenAIVLMClient:
         turn_history: List[TurnRecord],
         system_prompt_override: Optional[str] = None,
         extra_context: Optional[str] = None,
+        turn_hint: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Build the full conversation from turn history.
 
@@ -328,6 +348,9 @@ class OpenAIVLMClient:
             })
 
         # 4. Current turn: full-resolution screenshot
+        current_prompt = "Current screenshot. What actions should I take next?"
+        if turn_hint:
+            current_prompt += f"\n\nIMPORTANT: {turn_hint}"
         items.append({
             "type": "message",
             "role": "user",
@@ -338,7 +361,7 @@ class OpenAIVLMClient:
                 },
                 {
                     "type": "input_text",
-                    "text": "Current screenshot. What actions should I take next?",
+                    "text": current_prompt,
                 },
             ],
         })

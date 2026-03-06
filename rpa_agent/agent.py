@@ -1272,10 +1272,13 @@ class GUIAgent:
         signal.signal(signal.SIGINT, _sigint_handler)
 
         # Start hotkey monitor for stopping agent (Ctrl+Alt)
-        from .core.hotkey import HotkeyMonitor
-        self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
-        self._hotkey_monitor.start()
-        self.console.print("[dim]Press Ctrl+C or Ctrl+Alt to stop the agent[/]")
+        if os.environ.get("RPA_NO_HOTKEY") != "1":
+            from .core.hotkey import HotkeyMonitor
+            self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
+            self._hotkey_monitor.start()
+            self.console.print("[dim]Press Ctrl+C or Ctrl+Alt to stop the agent[/]")
+        else:
+            self.console.print("[dim]Press Ctrl+C to stop the agent (hotkey disabled)[/]")
 
         # Start cursor overlay for visual feedback
         if self.config.show_cursor_overlay:
@@ -1629,11 +1632,15 @@ class GUIAgent:
 
         signal.signal(signal.SIGINT, _sigint_handler)
 
-        # Start hotkey monitor
-        from .core.hotkey import HotkeyMonitor
-        self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
-        self._hotkey_monitor.start()
-        self.console.print("[dim]Press Ctrl+C or Ctrl+Alt to stop the agent[/]")
+        # Start hotkey monitor (skip if RPA_NO_HOTKEY=1 to avoid false triggers in background)
+        import os
+        if os.environ.get("RPA_NO_HOTKEY") != "1":
+            from .core.hotkey import HotkeyMonitor
+            self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
+            self._hotkey_monitor.start()
+            self.console.print("[dim]Press Ctrl+C or Ctrl+Alt to stop the agent[/]")
+        else:
+            self.console.print("[dim]Press Ctrl+C to stop the agent (hotkey disabled)[/]")
 
         # Start cursor overlay
         if self.config.show_cursor_overlay:
@@ -1678,6 +1685,8 @@ class GUIAgent:
 
         step_number = 0
         turn_history: List[TurnRecord] = []
+        recent_click_coords: List[tuple] = []  # Track recent click (x, y) for stuck detection
+        last_had_wait = False  # Track if last turn included a long wait
 
         try:
             while self.state == AgentState.RUNNING and step_number < self.config.max_steps:
@@ -1688,6 +1697,38 @@ class GUIAgent:
                 self.console.print(f"\n[dim]Step {step_number}: Capturing screenshot...[/]")
                 screenshot_before, screenshot_path = self._capture_screenshot_cua(step_number)
 
+                # Build per-turn hint based on stuck detection and last actions
+                turn_hint = None
+                if last_had_wait:
+                    turn_hint = (
+                        "You just waited for content to play. NOW CHECK: is the NEXT button "
+                        "(bottom-right of player controls, ~1518, 790 in model coords) "
+                        "enabled/bright? If yes, CLICK IT immediately — do NOT click Play again. "
+                        "Look at the playback timeline — if it's at the end, the video is done "
+                        "and NEXT should be clickable. If NEXT is still disabled, wait 90 more seconds."
+                    )
+                    last_had_wait = False
+
+                # Stuck detection: if we clicked near the same coords 3+ times in last 4 turns
+                if len(recent_click_coords) >= 3:
+                    last_coords = recent_click_coords[-3:]
+                    # Check if all 3 are within 50px of each other
+                    xs = [c[0] for c in last_coords]
+                    ys = [c[1] for c in last_coords]
+                    if max(xs) - min(xs) < 50 and max(ys) - min(ys) < 50:
+                        avg_x, avg_y = sum(xs) // 3, sum(ys) // 3
+                        stuck_hint = (
+                            f"WARNING: You have clicked near ({avg_x}, {avg_y}) three times in a "
+                            f"row with no progress. STOP repeating this action. Instead:\n"
+                            f"1. Look at the ENTIRE screen — is there a NEXT button elsewhere?\n"
+                            f"2. Check if there's a quiz, checkbox, or interactive element to complete\n"
+                            f"3. Try scrolling down to see hidden content\n"
+                            f"4. Check the sidebar menu for your current position in the course\n"
+                            f"Do something DIFFERENT this turn."
+                        )
+                        turn_hint = stuck_hint if not turn_hint else f"{turn_hint}\n\n{stuck_hint}"
+                        self.console.print(f"[yellow]Stuck detection: repeated clicks near ({avg_x}, {avg_y})[/]")
+
                 # 2. Send to model with turn history
                 self.console.print(f"[dim]Sending to model (history: {len(turn_history)} turns)...[/]")
                 vlm_response = self.openai_vlm.send(
@@ -1695,6 +1736,7 @@ class GUIAgent:
                     current_screenshot=screenshot_before,
                     turn_history=turn_history,
                     extra_context=guidebook_context,
+                    turn_hint=turn_hint,
                 )
 
                 actions_raw = vlm_response.actions
@@ -1832,6 +1874,22 @@ class GUIAgent:
                         if on_step:
                             on_step(step)
 
+                # Track actions for stuck detection
+                turn_had_wait = False
+                for action in mapped_actions:
+                    if isinstance(action, WaitAction) and action.seconds > 5:
+                        turn_had_wait = True
+                # Track click coords from raw actions (model space, pre-rescaling)
+                for raw_action in actions_raw:
+                    if raw_action.get("type") in ("click", "double_click"):
+                        cx = raw_action.get("x", 0)
+                        cy = raw_action.get("y", 0)
+                        recent_click_coords.append((cx, cy))
+                        # Keep only last 6 entries
+                        if len(recent_click_coords) > 6:
+                            recent_click_coords.pop(0)
+                last_had_wait = turn_had_wait
+
                 if self.state != AgentState.RUNNING:
                     break
 
@@ -1940,10 +1998,14 @@ class GUIAgent:
         signal.signal(signal.SIGINT, _sigint_handler)
 
         # Start hotkey monitor
-        from .core.hotkey import HotkeyMonitor
-        self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
-        self._hotkey_monitor.start()
-        self.console.print("[dim]Press Ctrl+C or Ctrl+Alt to stop exploration[/]")
+        import os
+        if os.environ.get("RPA_NO_HOTKEY") != "1":
+            from .core.hotkey import HotkeyMonitor
+            self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
+            self._hotkey_monitor.start()
+            self.console.print("[dim]Press Ctrl+C or Ctrl+Alt to stop exploration[/]")
+        else:
+            self.console.print("[dim]Press Ctrl+C to stop exploration (hotkey disabled)[/]")
 
         # Start cursor overlay
         if self.config.show_cursor_overlay:
@@ -2282,10 +2344,13 @@ class GUIAgent:
         signal.signal(signal.SIGINT, _sigint_handler)
 
         # Start hotkey monitor for stopping agent (Ctrl+Alt)
-        from .core.hotkey import HotkeyMonitor
-        self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
-        self._hotkey_monitor.start()
-        self.console.print("[dim]Press Ctrl+C or Ctrl+Alt to stop the agent[/]")
+        if os.environ.get("RPA_NO_HOTKEY") != "1":
+            from .core.hotkey import HotkeyMonitor
+            self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
+            self._hotkey_monitor.start()
+            self.console.print("[dim]Press Ctrl+C or Ctrl+Alt to stop the agent[/]")
+        else:
+            self.console.print("[dim]Press Ctrl+C to stop the agent (hotkey disabled)[/]")
 
         # Start cursor overlay for visual feedback
         if self.config.show_cursor_overlay:
