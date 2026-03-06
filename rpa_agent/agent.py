@@ -1876,9 +1876,12 @@ class GUIAgent:
 
                 # Track actions for stuck detection
                 turn_had_wait = False
+                is_wait_only_turn = True  # Track if this turn is only waits/screenshots
                 for action in mapped_actions:
                     if isinstance(action, WaitAction) and action.seconds > 5:
                         turn_had_wait = True
+                    elif not isinstance(action, (WaitAction, ScreenshotAction)):
+                        is_wait_only_turn = False
                 # Track click coords from raw actions (model space, pre-rescaling)
                 for raw_action in actions_raw:
                     if raw_action.get("type") in ("click", "double_click"):
@@ -1889,6 +1892,12 @@ class GUIAgent:
                         if len(recent_click_coords) > 6:
                             recent_click_coords.pop(0)
                 last_had_wait = turn_had_wait
+
+                # Don't count wait-only turns against the step limit
+                # (waiting for video is passive — shouldn't burn steps)
+                if is_wait_only_turn and turn_had_wait:
+                    step_number -= 1  # Give back the step
+                    self.console.print("[dim](wait-only turn — not counted toward step limit)[/]")
 
                 if self.state != AgentState.RUNNING:
                     break
