@@ -37,7 +37,7 @@ from .actions.definitions import (
     FocusWindowAction, WaitAction, ScreenshotAction,
     DoneAction, FailAction
 )
-from .vlm import VLMClient, VLMConfig, CUAClient, CUAConfig
+from .vlm import VLMClient, VLMConfig, CUAClient, CUAConfig, OpenAIVLMClient, OpenAIVLMConfig
 from .vlm.prompts import SystemPrompts
 from .vlm.cua_action_mapper import map_cua_actions
 from .operator import Operator
@@ -83,7 +83,7 @@ class ActionResult:
 @dataclass
 class AgentConfig:
     """Configuration for the GUI agent."""
-    # Provider: "anthropic" (default VLM) or "openai" (GPT-5.4 CUA)
+    # Provider: "anthropic" (default VLM), "openai" (GPT-5.4 CUA), or "openai-vlm" (GPT-5.4 as VLM)
     provider: str = "anthropic"
 
     # VLM settings (used when provider="anthropic")
@@ -91,6 +91,9 @@ class AgentConfig:
 
     # CUA settings (used when provider="openai")
     cua_config: Optional[CUAConfig] = None
+
+    # OpenAI VLM settings (used when provider="openai-vlm")
+    openai_vlm_config: Optional[OpenAIVLMConfig] = None
 
     # Execution settings
     max_steps: int = 50
@@ -222,11 +225,18 @@ class GUIAgent:
         if self.config.provider == "openai":
             self.cua_client = CUAClient(self.config.cua_config)
             self.vlm = None
+            self.openai_vlm = None
             self.parser = None
+        elif self.config.provider == "openai-vlm":
+            self.openai_vlm = OpenAIVLMClient(self.config.openai_vlm_config)
+            self.vlm = None
+            self.cua_client = None
+            self.parser = ActionParser()
         else:
             self.vlm = VLMClient(self.config.vlm_config)
             self.parser = ActionParser()
             self.cua_client = None
+            self.openai_vlm = None
 
         # Visual feedback overlays
         self._cursor_overlay = None
@@ -241,9 +251,19 @@ class GUIAgent:
         self._recent_actions: List[str] = []  # Track recent actions for stuck detection
         self._vlm_scale_factor: float = 1.0  # Ratio of original/VLM image size
 
-        # Build system prompt — only needed for Anthropic provider
+        # Build system prompt — only needed for Anthropic and OpenAI-VLM providers
         if self.config.provider == "openai":
             self._system_prompt = ""  # CUA manages its own prompting
+        elif self.config.provider == "openai-vlm":
+            # Use the same prompts as Anthropic provider
+            if self.config.system_prompt:
+                self._system_prompt = self.config.system_prompt
+            elif self.operator:
+                self._system_prompt = SystemPrompts.GUI_AGENT_COMPRESSED_TEMPLATE.replace(
+                    "{{action_space}}", self.operator.action_space()
+                )
+            else:
+                self._system_prompt = SystemPrompts.GUI_AGENT_COMPRESSED
         elif self.config.system_prompt:
             self._system_prompt = self.config.system_prompt
         elif self.operator:
@@ -255,6 +275,44 @@ class GUIAgent:
 
         # Ensure screenshot directory exists
         self.config.screenshot_dir.mkdir(parents=True, exist_ok=True)
+
+    def _call_vlm(
+        self,
+        screenshot_data,
+        vlm_media_type: str,
+        task: str,
+        screen_info: Optional[Dict[str, int]] = None,
+        history: Optional[List[Dict[str, Any]]] = None,
+    ):
+        """Dispatch VLM call to the appropriate backend (Anthropic or OpenAI)."""
+        if self.openai_vlm is not None:
+            # OpenAI Responses API path
+            from .vlm.openai_vlm_client import OpenAIVLMResponse
+            # screenshot_data is a tuple (base64_data, media_type)
+            if isinstance(screenshot_data, tuple):
+                base64_data, mt = screenshot_data
+            else:
+                base64_data = screenshot_data
+                mt = vlm_media_type
+            resp = self.openai_vlm.analyze_screenshot(
+                screenshot_base64=base64_data,
+                task=task,
+                screen_info=screen_info,
+                history=history,
+                system_prompt=self._system_prompt,
+                media_type=mt,
+            )
+            # Wrap in a duck-type-compatible object with .text and .usage
+            return resp
+        else:
+            # Anthropic path (default)
+            return self.vlm.analyze_screenshot(
+                screenshot=screenshot_data,
+                task=task,
+                screen_info=screen_info,
+                history=history if history else None,
+                system_prompt=self._system_prompt,
+            )
 
     def _on_stop_hotkey(self) -> None:
         """Callback when stop hotkey (Ctrl+Alt) is pressed."""
@@ -375,34 +433,38 @@ class GUIAgent:
         When the screenshot was resized before sending to the VLM, we need to
         scale those coordinates back to the original screen resolution.
         Modifies the action in-place.
+
+        Uses separate X/Y scale factors for non-uniform scaling (e.g. ultrawide
+        3440x1440 native scaled to 1920x1080 for the model).
         """
-        s = self._vlm_scale_factor
-        if s == 1.0:
+        sx = getattr(self, '_vlm_scale_factor_x', self._vlm_scale_factor)
+        sy = getattr(self, '_vlm_scale_factor_y', self._vlm_scale_factor)
+        if sx == 1.0 and sy == 1.0:
             return
 
         # Absolute x, y (most actions)
         if hasattr(action, 'x') and isinstance(getattr(action, 'x'), (int, float)):
             if action.x is not None:
-                action.x = round(action.x * s)
+                action.x = round(action.x * sx)
         if hasattr(action, 'y') and isinstance(getattr(action, 'y'), (int, float)):
             if action.y is not None:
-                action.y = round(action.y * s)
+                action.y = round(action.y * sy)
 
         # DragAction: start_x/y, end_x/y
         if hasattr(action, 'start_x'):
-            action.start_x = round(action.start_x * s)
+            action.start_x = round(action.start_x * sx)
         if hasattr(action, 'start_y'):
-            action.start_y = round(action.start_y * s)
+            action.start_y = round(action.start_y * sy)
         if hasattr(action, 'end_x'):
-            action.end_x = round(action.end_x * s)
+            action.end_x = round(action.end_x * sx)
         if hasattr(action, 'end_y'):
-            action.end_y = round(action.end_y * s)
+            action.end_y = round(action.end_y * sy)
 
         # MoveRelativeAction: dx, dy offsets also need scaling
         if hasattr(action, 'dx') and isinstance(getattr(action, 'dx'), (int, float)):
-            action.dx = round(action.dx * s)
+            action.dx = round(action.dx * sx)
         if hasattr(action, 'dy') and isinstance(getattr(action, 'dy'), (int, float)):
-            action.dy = round(action.dy * s)
+            action.dy = round(action.dy * sy)
 
     @staticmethod
     def _draw_coordinate_grid(
@@ -796,11 +858,19 @@ class GUIAgent:
             else:
                 break
 
-        # Scroll actions are inherently repeatable — allow up to 6 consecutive
-        # scrolls before triggering stuck detection (vs 3 for other actions)
+        # Scroll and wait actions are inherently repeatable — allow higher thresholds.
+        # Wait is especially common during video playback (must wait for progress bar).
         is_scroll = isinstance(action, ScrollAction)
-        block_threshold = 6 if is_scroll else 3
-        override_threshold = 8 if is_scroll else 5
+        is_wait = isinstance(action, WaitAction)
+        if is_wait:
+            block_threshold = 30
+            override_threshold = 50
+        elif is_scroll:
+            block_threshold = 6
+            override_threshold = 8
+        else:
+            block_threshold = 3
+            override_threshold = 5
 
         # Smart override: if agent typed text recently and is now stuck clicking,
         # override earlier (at 3 repeats instead of 5) with Enter key
@@ -1317,12 +1387,12 @@ class GUIAgent:
                     elif remaining <= self.config.max_steps // 3:
                         task_for_vlm += " Be efficient — limited steps remaining."
 
-                vlm_response = self.vlm.analyze_screenshot(
-                    screenshot=screenshot_data,
+                vlm_response = self._call_vlm(
+                    screenshot_data=screenshot_data,
+                    vlm_media_type=vlm_media_type,
                     task=task_for_vlm,
                     screen_info=screen_info,
                     history=history_to_send if history_to_send else None,
-                    system_prompt=self._system_prompt
                 )
 
                 # 3. Parse action
@@ -1539,7 +1609,12 @@ class GUIAgent:
     # ==================== CUA (OpenAI GPT-5.4 Computer Use) ====================
 
     def _capture_screenshot_cua(self, step_number: int) -> Tuple[str, Optional[Path]]:
-        """Capture screenshot for CUA mode (no resize, PNG, full resolution)."""
+        """Capture screenshot for CUA mode.
+
+        Scales to target height (default 1080px) maintaining aspect ratio.
+        Stores inverse scale factor so CUA action coordinates can be mapped
+        back to native screen resolution.
+        """
         # Pause overlays to prevent them from appearing in screenshot
         if self._cursor_overlay:
             self._cursor_overlay.pause()
@@ -1560,14 +1635,32 @@ class GUIAgent:
         if self._action_notifier:
             self._action_notifier.resume()
 
-        # Save to disk
+        original_w, original_h = img.size
+
+        # Save to disk (original resolution)
         screenshot_path = None
         if self.config.save_screenshots:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             screenshot_path = self.config.screenshot_dir / f"step_{step_number:03d}_{timestamp}.png"
             img.save(screenshot_path, format="PNG", optimize=True)
 
-        # Encode as base64 PNG (no resize for CUA — supports up to 10.24M pixels)
+        # Scale to exact display_width x display_height from CUA config
+        # The model expects images matching the declared display dimensions
+        target_width = self.cua_client.config.display_width if self.cua_client else 1920
+        target_height = self.cua_client.config.display_height if self.cua_client else 1080
+        if original_w != target_width or original_h != target_height:
+            img = img.resize((target_width, target_height), Image.LANCZOS)
+            # Store scale factors for coordinate mapping:
+            # model returns coords in display space → multiply to get native
+            self._vlm_scale_factor_x = original_w / target_width
+            self._vlm_scale_factor_y = original_h / target_height
+        else:
+            self._vlm_scale_factor_x = 1.0
+            self._vlm_scale_factor_y = 1.0
+        # Legacy single scale factor (used by _rescale_action_coords)
+        self._vlm_scale_factor = self._vlm_scale_factor_y
+
+        # Encode as base64 PNG
         buffer = io.BytesIO()
         img.save(buffer, format="PNG")
         base64_img = base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
@@ -1651,8 +1744,14 @@ class GUIAgent:
                         self.console.print(f"[green]CUA final output:[/] {_sanitize_text(final_text[:200])}")
                     break
 
-                # Get batched actions from the computer_call
-                actions_raw = computer_call.actions if hasattr(computer_call, 'actions') else []
+                # Get actions from the computer_call.
+                # Native CUA has .actions[] (batched), translated format has .action (singular).
+                if hasattr(computer_call, 'actions') and computer_call.actions:
+                    actions_raw = computer_call.actions
+                elif hasattr(computer_call, 'action') and computer_call.action:
+                    actions_raw = [computer_call.action]
+                else:
+                    actions_raw = []
                 if not actions_raw:
                     # Empty actions — just send screenshot
                     self.console.print("[dim]CUA requested screenshot (no actions)[/]")
@@ -1680,6 +1779,10 @@ class GUIAgent:
 
                 # Map CUA actions to our Action types
                 mapped_actions = map_cua_actions(actions_raw)
+
+                # Rescale coordinates from model's image space to native screen space
+                for action in mapped_actions:
+                    self._rescale_action_coords(action)
 
                 # Execute all actions in order (batched)
                 for i, action in enumerate(mapped_actions):

@@ -58,22 +58,30 @@ def _normalize_key(key: str) -> str:
     return _KEY_MAP.get(key.upper(), key.lower())
 
 
+def _get_attr(obj: Any, name: str, default: Any = None) -> Any:
+    """Get attribute from an object or dict, with fallback."""
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
 def map_cua_action(action: Any) -> AnyAction:
     """
     Map a single CUA action object to our Action dataclass.
 
     Args:
-        action: A CUA action object with .type and action-specific attrs.
+        action: A CUA action object with .type and action-specific attrs,
+                or a dict with the same keys (when coming via translation layer).
 
     Returns:
         An AnyAction instance ready for _execute_action().
     """
-    action_type = action.type
+    action_type = _get_attr(action, "type")
 
     if action_type == "click":
-        button = getattr(action, "button", "left")
-        x = int(getattr(action, "x", 0))
-        y = int(getattr(action, "y", 0))
+        button = _get_attr(action, "button", "left")
+        x = int(_get_attr(action, "x", 0))
+        y = int(_get_attr(action, "y", 0))
         if button == "right":
             return RightClickAction(
                 x=x, y=y,
@@ -87,8 +95,8 @@ def map_cua_action(action: Any) -> AnyAction:
         )
 
     elif action_type == "double_click":
-        x = int(getattr(action, "x", 0))
-        y = int(getattr(action, "y", 0))
+        x = int(_get_attr(action, "x", 0))
+        y = int(_get_attr(action, "y", 0))
         return DoubleClickAction(
             x=x, y=y,
             element_description=f"CUA double_click at ({x}, {y})",
@@ -96,10 +104,10 @@ def map_cua_action(action: Any) -> AnyAction:
         )
 
     elif action_type == "scroll":
-        x = int(getattr(action, "x", 0))
-        y = int(getattr(action, "y", 0))
-        scroll_x = getattr(action, "scroll_x", 0) or 0
-        scroll_y = getattr(action, "scroll_y", 0) or 0
+        x = int(_get_attr(action, "x", 0))
+        y = int(_get_attr(action, "y", 0))
+        scroll_x = _get_attr(action, "scroll_x", 0) or 0
+        scroll_y = _get_attr(action, "scroll_y", 0) or 0
 
         # Determine direction and amount from scroll deltas
         if abs(scroll_y) >= abs(scroll_x):
@@ -118,7 +126,7 @@ def map_cua_action(action: Any) -> AnyAction:
         )
 
     elif action_type == "type":
-        text = getattr(action, "text", "")
+        text = _get_attr(action, "text", "")
         return TypeAction(
             text=text,
             reasoning=f"CUA type: {text[:50]}",
@@ -126,7 +134,7 @@ def map_cua_action(action: Any) -> AnyAction:
         )
 
     elif action_type == "keypress":
-        keys = getattr(action, "keys", [])
+        keys = _get_attr(action, "keys", [])
         normalized = [_normalize_key(k) for k in keys]
         if len(normalized) == 1:
             return KeyAction(
@@ -141,15 +149,15 @@ def map_cua_action(action: Any) -> AnyAction:
         )
 
     elif action_type == "drag":
-        path = getattr(action, "path", [])
+        path = _get_attr(action, "path", [])
         if len(path) >= 2:
             start = path[0]
             end = path[-1]
             return DragAction(
-                start_x=int(getattr(start, "x", start.get("x", 0)) if isinstance(start, dict) else start.x),
-                start_y=int(getattr(start, "y", start.get("y", 0)) if isinstance(start, dict) else start.y),
-                end_x=int(getattr(end, "x", end.get("x", 0)) if isinstance(end, dict) else end.x),
-                end_y=int(getattr(end, "y", end.get("y", 0)) if isinstance(end, dict) else end.y),
+                start_x=int(_get_attr(start, "x", 0)),
+                start_y=int(_get_attr(start, "y", 0)),
+                end_x=int(_get_attr(end, "x", 0)),
+                end_y=int(_get_attr(end, "y", 0)),
                 reasoning="CUA drag",
                 action_type=ActionType.DRAG,
             )
@@ -161,8 +169,8 @@ def map_cua_action(action: Any) -> AnyAction:
         )
 
     elif action_type == "move":
-        x = int(getattr(action, "x", 0))
-        y = int(getattr(action, "y", 0))
+        x = int(_get_attr(action, "x", 0))
+        y = int(_get_attr(action, "y", 0))
         return HoverAction(
             x=x, y=y,
             element_description=f"CUA move to ({x}, {y})",

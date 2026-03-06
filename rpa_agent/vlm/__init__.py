@@ -11,6 +11,7 @@ from .client import (
     get_config_from_env,
 )
 from .cua_client import CUAClient, CUAConfig
+from .openai_vlm_client import OpenAIVLMClient, OpenAIVLMConfig, OpenAIVLMResponse
 from .prompts import SystemPrompts
 
 # Model lists by provider
@@ -26,6 +27,9 @@ __all__ = [
     "VLMResponse",
     "CUAClient",
     "CUAConfig",
+    "OpenAIVLMClient",
+    "OpenAIVLMConfig",
+    "OpenAIVLMResponse",
     "SystemPrompts",
     "AVAILABLE_MODELS",
     "DEFAULT_MODEL",

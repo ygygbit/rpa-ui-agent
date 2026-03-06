@@ -13,6 +13,7 @@ from rich.prompt import Confirm, Prompt
 
 from .agent import GUIAgent, AgentConfig
 from .vlm import VLMConfig, CUAConfig, AVAILABLE_MODELS, DEFAULT_MODEL
+from .vlm.openai_vlm_client import OpenAIVLMConfig
 
 app = typer.Typer(
     name="rpa-agent",
@@ -63,7 +64,7 @@ def run(
     provider: str = typer.Option(
         "anthropic",
         "--provider",
-        help="Provider: 'anthropic' (VLM) or 'openai' (GPT-5.4 CUA)"
+        help="Provider: 'anthropic' (VLM), 'openai' (GPT-5.4 CUA), or 'openai-vlm' (GPT-5.4 as VLM)"
     ),
     display_width: int = typer.Option(
         1600,
@@ -96,7 +97,7 @@ def run(
     if provider == "openai":
         cua_config = CUAConfig(
             base_url=base_url if base_url != "http://localhost:23333/api/anthropic"
-                else "http://localhost:23333/api/openai/v1",
+                else "http://localhost:4141/v1",
             api_key=api_key or "dummy",
             model=model if model != DEFAULT_MODEL else "gpt-5.4",
             display_width=display_width,
@@ -106,6 +107,27 @@ def run(
         config = AgentConfig(
             provider="openai",
             cua_config=cua_config,
+            max_steps=max_steps,
+            step_delay=step_delay,
+            dry_run=dry_run,
+            confirm_actions=confirm,
+            save_screenshots=save_screenshots,
+            screenshot_dir=Path(screenshot_dir),
+            screenshot_scale=screenshot_scale,
+            screenshot_quality=screenshot_quality,
+            show_cursor_overlay=not no_overlay,
+        )
+    elif provider == "openai-vlm":
+        openai_vlm_config = OpenAIVLMConfig(
+            base_url=base_url if base_url != "http://localhost:23333/api/anthropic"
+                else "http://localhost:4141/v1",
+            api_key=api_key or "dummy",
+            model=model if model != DEFAULT_MODEL else "gpt-5.4",
+            temperature=0.1,
+        )
+        config = AgentConfig(
+            provider="openai-vlm",
+            openai_vlm_config=openai_vlm_config,
             max_steps=max_steps,
             step_delay=step_delay,
             dry_run=dry_run,
