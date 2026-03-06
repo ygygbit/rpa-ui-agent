@@ -1981,7 +1981,18 @@ class GUIAgent:
                     f"Pages discovered so far: {', '.join(visited_pages) if visited_pages else 'none yet'}\n"
                     f"Steps taken: {step_number}/{self.config.max_steps}\n"
                 )
-                if visited_pages:
+                if not visited_pages or all(
+                    "new_tab" in p or "browser" in p for p in visited_pages
+                ):
+                    progress += (
+                        "\nYou haven't reached the target app yet. "
+                        "Navigate to it NOW using the address bar:\n"
+                        '1. {"type": "keypress", "keys": ["CTRL", "l"]}\n'
+                        '2. {"type": "type", "text": "search query or URL for the app"}\n'
+                        '3. {"type": "keypress", "keys": ["ENTER"]}\n'
+                        "If there's a shortcut tile visible for the app, you can click it directly instead.\n"
+                    )
+                elif visited_pages:
                     progress += "Focus on finding NEW pages you haven't visited yet.\n"
 
                 vlm_response = self.openai_vlm.send(

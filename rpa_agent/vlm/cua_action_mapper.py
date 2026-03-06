@@ -133,8 +133,12 @@ def map_cua_action(action: Any) -> AnyAction:
             action_type=ActionType.TYPE,
         )
 
-    elif action_type == "keypress":
-        keys = _get_attr(action, "keys", [])
+    elif action_type in ("keypress", "key", "press_key"):
+        keys = _get_attr(action, "keys", None)
+        # Handle single key string (e.g., {"type": "key", "key": "enter"})
+        if keys is None:
+            single_key = _get_attr(action, "key", "")
+            keys = [single_key] if single_key else []
         normalized = [_normalize_key(k) for k in keys]
         if len(normalized) == 1:
             return KeyAction(
@@ -142,10 +146,17 @@ def map_cua_action(action: Any) -> AnyAction:
                 reasoning=f"CUA keypress: {normalized[0]}",
                 action_type=ActionType.PRESS_KEY,
             )
-        return HotkeyAction(
-            keys=normalized,
-            reasoning=f"CUA hotkey: {'+'.join(normalized)}",
-            action_type=ActionType.HOTKEY,
+        if len(normalized) > 1:
+            return HotkeyAction(
+                keys=normalized,
+                reasoning=f"CUA hotkey: {'+'.join(normalized)}",
+                action_type=ActionType.HOTKEY,
+            )
+        # Empty keys — treat as no-op wait
+        return WaitAction(
+            seconds=0.1,
+            reason="CUA keypress with no keys",
+            action_type=ActionType.WAIT,
         )
 
     elif action_type == "drag":
@@ -195,5 +206,15 @@ def map_cua_action(action: Any) -> AnyAction:
 
 
 def map_cua_actions(actions: List[Any]) -> List[AnyAction]:
-    """Map a list of CUA actions to our Action dataclasses."""
-    return [map_cua_action(a) for a in actions]
+    """Map a list of CUA actions to our Action dataclasses.
+
+    Unknown action types are skipped with a warning rather than crashing.
+    """
+    result = []
+    for a in actions:
+        try:
+            result.append(map_cua_action(a))
+        except ValueError:
+            # Skip unknown action types gracefully
+            pass
+    return result
