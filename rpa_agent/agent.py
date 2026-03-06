@@ -140,6 +140,18 @@ class AgentConfig:
     sandbox_mode: bool = False
     sandbox_url: str = "http://localhost:8000"
 
+    # Visual history — send previous screenshots alongside current one
+    visual_history_enabled: bool = True
+    visual_history_max_images: int = 3  # max images per API call (current + previous + checkpoint)
+    visual_history_buffer_size: int = 20  # ring buffer size
+    visual_history_checkpoint_interval: int = 5  # save checkpoint every K steps
+
+    # Change detection — pixel-based screen comparison
+    change_detection_enabled: bool = True
+    change_detection_threshold: float = 0.02  # min diff ratio (2%)
+    no_change_wait_seconds: float = 3.0  # extra wait when no change detected
+    no_change_max_consecutive: int = 3  # after N unchanged steps, inject waiting hints
+
 
 @dataclass
 class AgentStep:
@@ -223,15 +235,26 @@ class GUIAgent:
         self._recent_actions: List[str] = []  # Track recent actions for stuck detection
         self._vlm_scale_factor: float = 1.0  # Ratio of original/VLM image size
 
+        # Visual history state
+        self._screenshot_buffer: List[Dict] = []  # ring buffer of {step, timestamp, base64, media_type}
+        self._checkpoint_screenshots: List[Dict] = []  # periodic checkpoints
+        self._no_change_count: int = 0  # consecutive no-change steps
+        self._previous_screenshot_base64: Optional[str] = None
+
         # Build system prompt — config override > operator compressed template > default compressed
         if self.config.system_prompt:
             self._system_prompt = self.config.system_prompt
         elif self.operator:
-            self._system_prompt = SystemPrompts.GUI_AGENT_COMPRESSED_TEMPLATE.replace(
-                "{{action_space}}", self.operator.action_space()
+            self._system_prompt = SystemPrompts.build_gui_prompt(
+                compressed=True,
+                visual_history=self.config.visual_history_enabled,
+                custom_action_space=self.operator.action_space(),
             )
         else:
-            self._system_prompt = SystemPrompts.GUI_AGENT_COMPRESSED
+            self._system_prompt = SystemPrompts.build_gui_prompt(
+                compressed=True,
+                visual_history=self.config.visual_history_enabled,
+            )
 
         # Ensure screenshot directory exists
         self.config.screenshot_dir.mkdir(parents=True, exist_ok=True)
@@ -963,6 +986,104 @@ class GUIAgent:
 
         return "\n".join(hints) if hints else ""
 
+    def _store_screenshot(self, step: int, base64_img: str, media_type: str) -> None:
+        """Add screenshot to the ring buffer and save checkpoint if due."""
+        entry = {
+            "step": step,
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "base64": base64_img,
+            "media_type": media_type,
+        }
+        self._screenshot_buffer.append(entry)
+        # Trim ring buffer
+        max_buf = self.config.visual_history_buffer_size
+        if len(self._screenshot_buffer) > max_buf:
+            self._screenshot_buffer = self._screenshot_buffer[-max_buf:]
+
+        # Save periodic checkpoint
+        interval = self.config.visual_history_checkpoint_interval
+        if interval > 0 and step % interval == 0:
+            self._checkpoint_screenshots.append(entry)
+
+    def _detect_screen_change(self, current_b64: str) -> bool:
+        """Compare current screenshot to previous using pixel diff.
+
+        Returns True if a meaningful change was detected.
+        Uses PIL ImageChops + ImageStat (no numpy dependency).
+        """
+        if self._previous_screenshot_base64 is None:
+            return True  # First screenshot — treat as changed
+
+        try:
+            from PIL import ImageChops, ImageStat
+
+            prev_bytes = base64.b64decode(self._previous_screenshot_base64)
+            curr_bytes = base64.b64decode(current_b64)
+
+            prev_img = Image.open(io.BytesIO(prev_bytes)).convert("RGB")
+            curr_img = Image.open(io.BytesIO(curr_bytes)).convert("RGB")
+
+            # Resize both to small thumbnails for fast comparison
+            thumb_size = (160, 90)
+            prev_thumb = prev_img.resize(thumb_size, Image.NEAREST)
+            curr_thumb = curr_img.resize(thumb_size, Image.NEAREST)
+
+            diff = ImageChops.difference(prev_thumb, curr_thumb)
+            stat = ImageStat.Stat(diff)
+
+            # Mean difference across RGB channels, normalized to 0-1
+            mean_diff = sum(stat.mean) / (3.0 * 255.0)
+            changed = mean_diff > self.config.change_detection_threshold
+            return changed
+        except Exception:
+            return True  # On error, assume changed
+
+    def _build_visual_history_images(
+        self, current_b64: str, current_media_type: str, current_step: int
+    ) -> Optional[List[Dict[str, str]]]:
+        """Assemble the list of additional images for the VLM call.
+
+        Returns a list of dicts with keys ``label``, ``base64``, ``media_type``
+        ordered as [checkpoint?, previous, current_is_handled_separately].
+        Returns None if visual history is disabled or there are no previous images.
+        """
+        if not self.config.visual_history_enabled:
+            return None
+
+        images: List[Dict[str, str]] = []
+        max_extra = self.config.visual_history_max_images - 1  # reserve 1 for current
+
+        # Add checkpoint if available and budget allows
+        if self._checkpoint_screenshots and max_extra >= 2:
+            cp = self._checkpoint_screenshots[-1]
+            # Only include if checkpoint is from a different step than previous
+            if self._screenshot_buffer and len(self._screenshot_buffer) >= 2:
+                prev = self._screenshot_buffer[-2]
+                if cp["step"] != prev["step"]:
+                    images.append({
+                        "label": f"[CHECKPOINT STATE (step {cp['step']}, {cp['timestamp']})]",
+                        "base64": cp["base64"],
+                        "media_type": cp["media_type"],
+                    })
+
+        # Add previous screenshot if available
+        if len(self._screenshot_buffer) >= 2:
+            prev = self._screenshot_buffer[-2]
+            images.append({
+                "label": f"[PREVIOUS STATE (step {prev['step']}, {prev['timestamp']})]",
+                "base64": prev["base64"],
+                "media_type": prev["media_type"],
+            })
+
+        if not images:
+            return None
+
+        # Trim to budget
+        while len(images) > max_extra:
+            images.pop(0)
+
+        return images
+
     def _extract_target_url(self, task: str) -> Optional[str]:
         """Extract a target URL from the task description.
 
@@ -1154,6 +1275,12 @@ class GUIAgent:
         self._conversation_history = []
         self._recent_actions = []
 
+        # Reset visual history buffers
+        self._screenshot_buffer = []
+        self._checkpoint_screenshots = []
+        self._no_change_count = 0
+        self._previous_screenshot_base64 = None
+
         # Start hotkey monitor for stopping agent (Ctrl+Alt)
         from .core.hotkey import HotkeyMonitor
         self._hotkey_monitor = HotkeyMonitor(self._on_stop_hotkey)
@@ -1221,11 +1348,46 @@ class GUIAgent:
                 self.console.print(f"\n[dim]Step {step_number}: Capturing screenshot...[/]")
                 base64_img, screenshot_path, screen_info = self._capture_screenshot(step_number)
 
-                # 2. Analyze with VLM
-                self.console.print("[dim]Analyzing screenshot...[/]")
-                # Pass as tuple (base64_data, media_type)
+                # 1.5 Visual history: change detection, buffer storage, waiting logic
                 vlm_media_type = "image/jpeg" if self.config.vlm_image_format.lower() == "jpeg" else "image/png"
                 screenshot_data = (base64_img, vlm_media_type)
+
+                no_change_hint = ""
+                if self.config.change_detection_enabled:
+                    screen_changed = self._detect_screen_change(base64_img)
+                    if not screen_changed:
+                        self._no_change_count += 1
+                        self.console.print(
+                            f"[yellow]No screen change detected "
+                            f"({self._no_change_count}/{self.config.no_change_max_consecutive})[/]"
+                        )
+                        # Extra wait on no-change
+                        time.sleep(self.config.no_change_wait_seconds)
+                        if self._no_change_count >= self.config.no_change_max_consecutive:
+                            no_change_hint = (
+                                "\n\n[WAITING MODE] The screen has NOT changed for "
+                                f"{self._no_change_count} consecutive steps. "
+                                "Something is likely loading or playing (e.g. a video). "
+                                "Use 'wait' with escalating duration (5s -> 10s -> 15s) "
+                                "instead of clicking. Only act when you see a visible change."
+                            )
+                    else:
+                        self._no_change_count = 0
+
+                # Store screenshot in visual history buffer
+                if self.config.visual_history_enabled:
+                    self._store_screenshot(step_number, base64_img, vlm_media_type)
+
+                # Update previous screenshot reference (after detection, before next step)
+                self._previous_screenshot_base64 = base64_img
+
+                # Build additional images for VLM (visual history)
+                additional_images = self._build_visual_history_images(
+                    base64_img, vlm_media_type, step_number
+                )
+
+                # 2. Analyze with VLM
+                self.console.print("[dim]Analyzing screenshot...[/]")
 
                 # Apply sliding window to conversation history if configured
                 if self.config.max_history_turns > 0 and self._conversation_history:
@@ -1252,13 +1414,16 @@ class GUIAgent:
                         task_for_vlm += " URGENT: Very few steps left. Complete the task NOW or report done/fail."
                     elif remaining <= self.config.max_steps // 3:
                         task_for_vlm += " Be efficient — limited steps remaining."
+                if no_change_hint:
+                    task_for_vlm += no_change_hint
 
                 vlm_response = self.vlm.analyze_screenshot(
                     screenshot=screenshot_data,
                     task=task_for_vlm,
                     screen_info=screen_info,
                     history=history_to_send if history_to_send else None,
-                    system_prompt=self._system_prompt
+                    system_prompt=self._system_prompt,
+                    additional_images=additional_images,
                 )
 
                 # 3. Parse action

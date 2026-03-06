@@ -7,6 +7,8 @@ Contains carefully crafted prompts for different agent capabilities:
 - Error recovery and self-correction
 """
 
+from typing import Optional
+
 
 class SystemPrompts:
     """System prompts for GUI agent tasks."""
@@ -462,6 +464,74 @@ Verify whether the expected state has been achieved after an action.
 - Note any unexpected changes
 - Detect error dialogs or warnings
 - Consider partial success scenarios"""
+
+    # Visual history supplement — injected when multi-image history is enabled
+    VISUAL_HISTORY_SUPPLEMENT = """
+
+## Visual History — Comparing Screenshots
+
+You are receiving MULTIPLE screenshots in each message:
+- **[CHECKPOINT STATE]**: A screenshot from several steps ago (reference point)
+- **[PREVIOUS STATE]**: The screenshot from the immediately prior step
+- **[CURRENT STATE]**: The live screenshot right now
+
+### How to Use Visual History
+1. **Compare PREVIOUS vs CURRENT** to see what changed since your last action
+2. **Compare CHECKPOINT vs CURRENT** to see overall progress
+3. If PREVIOUS and CURRENT look IDENTICAL, your last action had NO visible effect — try something different
+4. If a progress bar or loading indicator has NOT changed between PREVIOUS and CURRENT, the content is still loading — use `wait` instead of clicking
+
+### Video & Progress Bar Patterns
+- If a video is PLAYING (progress bar moving between CHECKPOINT and CURRENT), do NOT click the progress bar or play button — just `wait`
+- If the progress bar shows 100% or the video has ended (play button visible, progress complete), STOP waiting and proceed to the next step
+- Do NOT click a progress bar to seek — this often breaks playback
+- If progress has not changed after 3+ waits, the video may be stalled — try clicking play or refreshing
+
+### Waiting Strategy
+- When content is loading or a video is playing, use escalating wait times: `wait 5` → `wait 10` → `wait 15`
+- After waiting, ALWAYS compare the new screenshot to the previous one before deciding to wait again
+- If nothing has changed after 3 consecutive waits of 15+ seconds, the process is likely stuck — try a different approach
+
+### Training Course Navigation
+- Complete each video/section fully before clicking "Next"
+- Handle quiz questions by reading them carefully and selecting answers
+- Look for "Next" or "Continue" buttons that become active after completing content
+- If a "Next" button is grayed out, the current section is not yet complete — wait or check for unfinished content"""
+
+    @classmethod
+    def build_gui_prompt(
+        cls,
+        compressed: bool = True,
+        visual_history: bool = False,
+        custom_action_space: Optional[str] = None,
+    ) -> str:
+        """Assemble the system prompt with optional supplements.
+
+        Args:
+            compressed: Use the compressed (no-grid) prompt variant.
+            visual_history: Append the visual history supplement.
+            custom_action_space: If provided, inject into the template version
+                                 of the compressed prompt.
+
+        Returns:
+            The assembled system prompt string.
+        """
+        if custom_action_space is not None:
+            if compressed:
+                base = cls.GUI_AGENT_COMPRESSED_TEMPLATE.replace(
+                    "{{action_space}}", custom_action_space
+                )
+            else:
+                base = cls.GUI_AGENT_TEMPLATE.replace(
+                    "{{action_space}}", custom_action_space
+                )
+        else:
+            base = cls.GUI_AGENT_COMPRESSED if compressed else cls.GUI_AGENT
+
+        if visual_history:
+            base += cls.VISUAL_HISTORY_SUPPLEMENT
+
+        return base
 
     @classmethod
     def get_prompt(cls, prompt_type: str = "gui_agent") -> str:

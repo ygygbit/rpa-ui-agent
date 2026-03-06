@@ -282,28 +282,66 @@ class VLMClient:
         task: str,
         screen_info: Optional[Dict[str, int]] = None,
         history: Optional[List[Dict[str, str]]] = None,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        additional_images: Optional[List[Dict[str, Any]]] = None,
     ) -> VLMResponse:
         """
         Analyze a screenshot and determine next action.
 
         Args:
-            screenshot: Screenshot image
+            screenshot: Screenshot image (current state)
             task: Task description or instruction
             screen_info: Screen dimensions {"width": w, "height": h}
             history: Previous conversation history
             system_prompt: Custom system prompt (uses default if None)
+            additional_images: Optional list of dicts with keys
+                ``label`` (str) and ``base64`` (str) and ``media_type`` (str).
+                When provided, the user message is built as interleaved
+                text-label + image blocks (previous/checkpoint images first,
+                then the current screenshot).
 
         Returns:
             VLMResponse with action recommendation
         """
-        # Build user message
-        user_text = f"Task: {task}\n"
-        if screen_info:
-            user_text += f"\nScreen dimensions: {screen_info['width']}x{screen_info['height']}\n"
-        user_text += "\nAnalyze this screenshot and determine the next action to accomplish the task."
+        if additional_images:
+            # Build interleaved content: [label, image, ...] + current + task
+            content: List[Dict[str, Any]] = []
+            for img_info in additional_images:
+                content.append({"type": "text", "text": img_info["label"]})
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": img_info["media_type"],
+                        "data": img_info["base64"],
+                    },
+                })
 
-        content = self._build_message_content(user_text, [screenshot])
+            # Current screenshot
+            content.append({"type": "text", "text": "[CURRENT STATE]"})
+            img_data, media_type = self._encode_image(screenshot)
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": img_data,
+                },
+            })
+
+            # Task text
+            user_text = f"\nTask: {task}\n"
+            if screen_info:
+                user_text += f"\nScreen dimensions: {screen_info['width']}x{screen_info['height']}\n"
+            user_text += "\nAnalyze the screenshots above and determine the next action to accomplish the task."
+            content.append({"type": "text", "text": user_text})
+        else:
+            # Original single-image path (backwards compatible)
+            user_text = f"Task: {task}\n"
+            if screen_info:
+                user_text += f"\nScreen dimensions: {screen_info['width']}x{screen_info['height']}\n"
+            user_text += "\nAnalyze this screenshot and determine the next action to accomplish the task."
+            content = self._build_message_content(user_text, [screenshot])
 
         # Build messages
         messages = []

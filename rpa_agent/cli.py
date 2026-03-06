@@ -64,6 +64,9 @@ def run(
         help=f"Model name. Available: {', '.join(AVAILABLE_MODELS)}",
         callback=model_callback
     ),
+    visual_history: bool = typer.Option(True, "--visual-history/--no-visual-history", help="Enable multi-image visual history"),
+    visual_history_images: int = typer.Option(3, "--visual-history-images", help="Max images per VLM call (current + previous + checkpoint)"),
+    change_detection: bool = typer.Option(True, "--change-detection/--no-change-detection", help="Enable pixel-based screen change detection"),
 ):
     """
     Run the GUI agent to accomplish a task.
@@ -96,7 +99,10 @@ def run(
         screenshot_dir=Path(screenshot_dir),
         screenshot_scale=screenshot_scale,
         screenshot_quality=screenshot_quality,
-        show_cursor_overlay=not no_overlay
+        show_cursor_overlay=not no_overlay,
+        visual_history_enabled=visual_history,
+        visual_history_max_images=visual_history_images,
+        change_detection_enabled=change_detection,
     )
 
     # Create and run agent
@@ -546,6 +552,9 @@ def sandbox_run(
         "--sandbox-url",
         help="Sandbox API URL"
     ),
+    visual_history: bool = typer.Option(True, "--visual-history/--no-visual-history", help="Enable multi-image visual history"),
+    visual_history_images: int = typer.Option(3, "--visual-history-images", help="Max images per VLM call (current + previous + checkpoint)"),
+    change_detection: bool = typer.Option(True, "--change-detection/--no-change-detection", help="Enable pixel-based screen change detection"),
 ):
     """
     Run a task in the sandbox environment.
@@ -604,6 +613,9 @@ def sandbox_run(
         screenshot_dir=Path(screenshot_dir),
         sandbox_mode=True,
         sandbox_url=sandbox_url,
+        visual_history_enabled=visual_history,
+        visual_history_max_images=visual_history_images,
+        change_detection_enabled=change_detection,
     )
 
     # Create and run agent
