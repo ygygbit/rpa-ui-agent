@@ -17,6 +17,9 @@ WS_EX_LAYERED = 0x00080000
 WS_EX_TRANSPARENT = 0x00000020
 WS_EX_TOOLWINDOW = 0x00000080  # Don't show in taskbar
 
+# Virtual key code for Alt
+VK_MENU = 0x12
+
 
 def make_window_click_through(hwnd: int) -> None:
     """Make a window click-through using Windows API."""
@@ -28,6 +31,8 @@ class ActionNotifier:
     """
     Displays a notification overlay showing what the AI agent is doing.
     The window is click-through and can be hidden during screenshots.
+
+    In debug mode, the window is larger and shows the model's reasoning.
     """
 
     # Action icons (emoji-style text icons)
@@ -48,6 +53,7 @@ class ActionNotifier:
         "fail": "❌",
         "thinking": "🤖",
         "screenshot": "📸",
+        "debug_wait": "⏸️",
     }
 
     def __init__(
@@ -58,6 +64,7 @@ class ActionNotifier:
         bg_color: str = "#1a1a2e",
         text_color: str = "#ffffff",
         accent_color: str = "#4a9eff",
+        debug: bool = False,
     ):
         """
         Initialize action notifier.
@@ -69,7 +76,12 @@ class ActionNotifier:
             bg_color: Background color
             text_color: Text color
             accent_color: Accent color for icons/highlights
+            debug: Enable debug mode (larger window, reasoning display, Alt-to-proceed)
         """
+        self.debug = debug
+        if debug:
+            width = 500
+            height = 200
         self.width = width
         self.height = height
         self.position = position
@@ -83,10 +95,18 @@ class ActionNotifier:
         self._root: Optional[tk.Tk] = None
         self._action_label: Optional[tk.Label] = None
         self._detail_label: Optional[tk.Label] = None
+        self._reasoning_label: Optional[tk.Label] = None
+        self._hint_label: Optional[tk.Label] = None
         self._icon_label: Optional[tk.Label] = None
         self._current_action = ""
         self._current_detail = ""
+        self._current_reasoning = ""
+        self._current_hint = ""
         self._update_pending = False
+
+        # Debug mode: Alt key wait signaling
+        self._waiting_for_alt = False
+        self._alt_pressed = threading.Event()
 
     def _get_screen_position(self) -> tuple:
         """Calculate window position based on screen size and position setting."""
@@ -190,6 +210,41 @@ class ActionNotifier:
         )
         self._detail_label.pack(fill=tk.X)
 
+        # Debug mode: reasoning label and hint label
+        if self.debug:
+            try:
+                reasoning_font = tkfont.Font(family="Segoe UI", size=8)
+            except:
+                reasoning_font = tkfont.Font(size=8)
+
+            self._reasoning_label = tk.Label(
+                text_frame,
+                text="",
+                font=reasoning_font,
+                bg=self.bg_color,
+                fg="#88ccff",
+                anchor="nw",
+                justify=tk.LEFT,
+                wraplength=self.width - 100
+            )
+            self._reasoning_label.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
+
+            try:
+                hint_font = tkfont.Font(family="Segoe UI", size=9, weight="bold")
+            except:
+                hint_font = tkfont.Font(size=9, weight="bold")
+
+            self._hint_label = tk.Label(
+                text_frame,
+                text="",
+                font=hint_font,
+                bg=self.bg_color,
+                fg="#ffcc00",
+                anchor="w",
+                justify=tk.LEFT,
+            )
+            self._hint_label.pack(fill=tk.X, pady=(2, 0))
+
         # Make window click-through
         self._root.update()
         hwnd = ctypes.windll.user32.GetAncestor(self._root.winfo_id(), 2)
@@ -209,6 +264,10 @@ class ActionNotifier:
                     self._action_label.config(text=self._current_action)
                 if self._detail_label:
                     self._detail_label.config(text=self._current_detail)
+                if self._reasoning_label:
+                    self._reasoning_label.config(text=self._current_reasoning)
+                if self._hint_label:
+                    self._hint_label.config(text=self._current_hint)
                 self._update_pending = False
 
         if self._running:
@@ -233,6 +292,8 @@ class ActionNotifier:
     def stop(self) -> None:
         """Stop the notifier."""
         self._running = False
+        # Unblock any thread waiting for Alt
+        self._alt_pressed.set()
         if self._root:
             try:
                 self._root.quit()
@@ -253,13 +314,14 @@ class ActionNotifier:
         """Show the notifier again."""
         self._paused = False
 
-    def show_action(self, action_type: str, detail: str = "") -> None:
+    def show_action(self, action_type: str, detail: str = "", reasoning: str = "") -> None:
         """
         Update the display to show current action.
 
         Args:
             action_type: Type of action (click, move_mouse, type, etc.)
             detail: Additional detail about the action
+            reasoning: Model's reasoning for this action (debug mode)
         """
         icon = self.ACTION_ICONS.get(action_type.lower(), "🤖")
 
@@ -281,12 +343,15 @@ class ActionNotifier:
             "fail": "Task failed",
             "thinking": "Analyzing screen...",
             "screenshot": "Capturing screenshot",
+            "debug_wait": "Paused — press Alt",
         }
 
         action_text = action_texts.get(action_type.lower(), f"Executing: {action_type}")
 
         self._current_action = f"{icon}  {action_text}"
         self._current_detail = detail if detail else ""
+        self._current_reasoning = reasoning if reasoning else ""
+        self._current_hint = ""
         self._update_pending = True
 
         # Update icon
@@ -307,6 +372,54 @@ class ActionNotifier:
         if target:
             detail += f": {target}"
         self.show_action(action_type, detail)
+
+    def show_debug_step(self, step: int, action_summary: str, reasoning: str) -> None:
+        """Show debug step info with reasoning and 'Press Alt to continue' hint."""
+        self._current_action = f"⏸️  Step {step} — Paused"
+        self._current_detail = action_summary[:120]
+        self._current_reasoning = reasoning[:200]
+        self._current_hint = "Press Alt to execute..."
+        self._update_pending = True
+
+    def wait_for_alt(self, timeout: float = 300.0) -> bool:
+        """
+        Block until the user presses the Alt key.
+
+        Args:
+            timeout: Maximum seconds to wait (default 5 min)
+
+        Returns:
+            True if Alt was pressed, False if timed out or notifier stopped
+        """
+        self._alt_pressed.clear()
+        self._waiting_for_alt = True
+
+        # Poll GetAsyncKeyState for Alt key in a loop
+        start = time.monotonic()
+
+        # First wait for Alt to be released (in case it's already held)
+        while self._running and (time.monotonic() - start) < 2.0:
+            if not (user32.GetAsyncKeyState(VK_MENU) & 0x8000):
+                break
+            time.sleep(0.05)
+
+        # Now wait for Alt press
+        while self._running and (time.monotonic() - start) < timeout:
+            if user32.GetAsyncKeyState(VK_MENU) & 0x8000:
+                self._waiting_for_alt = False
+                self._alt_pressed.set()
+                # Wait for release to avoid repeat triggers
+                while user32.GetAsyncKeyState(VK_MENU) & 0x8000:
+                    time.sleep(0.05)
+                return True
+            if self._alt_pressed.is_set():
+                # Signaled externally (e.g., stop())
+                self._waiting_for_alt = False
+                return False
+            time.sleep(0.05)
+
+        self._waiting_for_alt = False
+        return False
 
     def __enter__(self):
         self.start()

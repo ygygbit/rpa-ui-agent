@@ -348,6 +348,8 @@ class OpenAIVLMClient:
             })
 
         # 4. Current turn: full-resolution screenshot
+        # Use detail="high" so GPT-5.4 processes at full patch resolution (max 2048px, 2500 patches).
+        # Images should already be capped to 2048px long edge by _capture_screenshot_cua.
         current_prompt = "Current screenshot. What actions should I take next?"
         if turn_hint:
             current_prompt += f"\n\nIMPORTANT: {turn_hint}"
@@ -358,6 +360,7 @@ class OpenAIVLMClient:
                 {
                     "type": "input_image",
                     "image_url": f"data:image/png;base64,{current_screenshot}",
+                    "detail": "high",
                 },
                 {
                     "type": "input_text",

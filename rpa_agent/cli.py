@@ -67,14 +67,14 @@ def run(
         help="Provider: 'anthropic' (VLM), 'openai' (GPT-5.4 CUA), or 'openai-vlm' (GPT-5.4 as VLM)"
     ),
     display_width: int = typer.Option(
-        1600,
+        0,
         "--display-width",
-        help="CUA display width (openai provider only)"
+        help="Display width for model screenshots. 0 = use native resolution (recommended for accuracy)"
     ),
     display_height: int = typer.Option(
-        900,
+        0,
         "--display-height",
-        help="CUA display height (openai provider only)"
+        help="Display height for model screenshots. 0 = use native resolution (recommended for accuracy)"
     ),
     explore: bool = typer.Option(
         False,
@@ -85,6 +85,11 @@ def run(
         None,
         "--guidebook",
         help="Path to a guidebook .md file to use as navigation reference"
+    ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Debug mode: show reasoning in overlay and step through with Alt key"
     ),
 ):
     """
@@ -104,6 +109,38 @@ def run(
         f"[bold blue]RPA UI Agent[/]\nVision-Language Model based GUI Automation\n[dim]Provider: {provider_label}[/]",
         border_style="blue"
     ))
+
+    # Auto-detect native screen resolution when display_width/height are 0
+    if display_width == 0 or display_height == 0:
+        try:
+            from rpa_agent.core.screen import ScreenCapture
+            sc = ScreenCapture()
+            native_w, native_h = sc.screen_size
+            if display_width == 0:
+                display_width = native_w
+            if display_height == 0:
+                display_height = native_h
+            console.print(f"[dim]Native resolution: {native_w}x{native_h} (using {display_width}x{display_height} for model)[/]")
+        except Exception:
+            # Fallback to safe defaults
+            if display_width == 0:
+                display_width = 1920
+            if display_height == 0:
+                display_height = 1080
+            console.print(f"[dim]Could not detect native resolution, using {display_width}x{display_height}[/]")
+
+    # GPT-5.4 with detail=high supports max 2048px on any dimension.
+    # If display dimensions exceed this, the model internally downscales the image
+    # but we tell it the original coordinates, causing click inaccuracy.
+    # Cap to 2048px long edge, preserving aspect ratio.
+    if provider in ("openai", "openai-vlm"):
+        MAX_VLM_DIMENSION = 2048
+        if display_width > MAX_VLM_DIMENSION or display_height > MAX_VLM_DIMENSION:
+            original_display_w, original_display_h = display_width, display_height
+            scale = MAX_VLM_DIMENSION / max(display_width, display_height)
+            display_width = round(display_width * scale)
+            display_height = round(display_height * scale)
+            console.print(f"[dim]Capped display from {original_display_w}x{original_display_h} to {display_width}x{display_height} (GPT-5.4 max 2048px)[/]")
 
     # Create configuration based on provider
     if provider == "openai":
@@ -128,6 +165,7 @@ def run(
             screenshot_scale=screenshot_scale,
             screenshot_quality=screenshot_quality,
             show_cursor_overlay=not no_overlay,
+            debug=debug,
         )
     elif provider == "openai-vlm":
         openai_vlm_config = OpenAIVLMConfig(
@@ -152,6 +190,7 @@ def run(
             screenshot_quality=screenshot_quality,
             show_cursor_overlay=not no_overlay,
             guidebook_path=Path(guidebook) if guidebook else None,
+            debug=debug,
         )
     else:
         vlm_config = VLMConfig(
@@ -171,6 +210,7 @@ def run(
             screenshot_scale=screenshot_scale,
             screenshot_quality=screenshot_quality,
             show_cursor_overlay=not no_overlay,
+            debug=debug,
         )
 
     # Create and run agent

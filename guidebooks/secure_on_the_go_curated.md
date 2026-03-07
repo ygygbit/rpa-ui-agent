@@ -28,21 +28,21 @@ Browser → Viva Learning → My Learning > In Progress → Course Detail → Op
 
 ## CRITICAL: Video Wait Strategy
 
-**Videos take 1-5 REAL minutes to play.** The NEXT button stays DISABLED until the video finishes. You MUST:
+**Videos typically take 30-60 seconds to play.** The NEXT button stays DISABLED until the video finishes. You MUST:
 
 1. Click Play if video hasn't started (play button at ~347, 790 or center of video area)
-2. Use `{"type": "wait", "seconds": 90}` to wait for the video to play through (90s covers most lessons)
+2. Use `{"type": "wait", "seconds": 30}` to wait for the video to play through (most videos finish within 30s)
 3. Take a screenshot to check if NEXT button is now enabled
-4. **AFTER WAITING: Look at the BOTTOM-RIGHT of the player controls (~1518, 790). Is NEXT bright/enabled? If YES → click NEXT immediately. Do NOT click Play again.**
-5. If NEXT is still disabled, wait another 90 seconds: `{"type": "wait", "seconds": 90}`
-6. Repeat wait → screenshot → check NEXT cycle until NEXT enables (usually 1-2 wait cycles)
+4. **AFTER WAITING: Look at the BOTTOM-RIGHT of the player controls. Is NEXT bright/enabled? If YES → click NEXT immediately. Do NOT click Play again.**
+5. If NEXT is still disabled, wait another 30 seconds: `{"type": "wait", "seconds": 30}`
+6. Repeat wait → screenshot → check NEXT cycle until NEXT enables (usually 1-2 wait cycles of 30s)
 7. ONLY click NEXT when it appears enabled/clickable (not grayed out)
 
 **DO NOT** rapidly click NEXT or skip ahead — it won't work.
 **DO NOT** click Play after waiting — the video already finished. Check NEXT first!
 
 **BE EFFICIENT**: Batch actions in one turn when possible. For example:
-`[{"type": "click", "x": 347, "y": 790}, {"type": "wait", "seconds": 90}, {"type": "screenshot"}]`
+`[{"type": "click", "x": 347, "y": 790}, {"type": "wait", "seconds": 30}, {"type": "screenshot"}]`
 This does Play + Wait + Check in a single turn instead of three. Patience is required.
 
 ---
@@ -51,13 +51,13 @@ This does Play + Wait + Check in a single turn instead of three. Patience is req
 
 ### Completing a Lesson
 1. Video auto-plays or click Play to start
-2. **WAIT 90 SECONDS** for video to finish — use `{"type": "wait", "seconds": 90}`
-3. Take screenshot to check NEXT button state at bottom-right (~1518, 790)
-4. **If NEXT is enabled (bright, not grayed out), CLICK NEXT at (1518, 790). Do NOT click Play again.**
-5. If NEXT is still disabled, wait another 90 seconds and check again
+2. **WAIT 30 SECONDS** for video to finish — use `{"type": "wait", "seconds": 30}`
+3. Take screenshot to check NEXT button state at bottom-right
+4. **If NEXT is enabled (bright, not grayed out), CLICK NEXT. Do NOT click Play again.**
+5. If NEXT is still disabled, wait another 30 seconds and check again
 6. If a lesson has interactive elements (quiz, clickable items), complete them before NEXT enables
 7. **NEVER click Play after a wait — the video is done. Always check NEXT first.**
-8. **Batch your actions**: `[click Play, wait 90s, screenshot]` in ONE turn to be efficient.
+8. **Batch your actions**: `[click Play, wait 30s, screenshot]` in ONE turn to be efficient.
 
 ### Section Progression
 - Sections are listed in the left sidebar under MENU tab
@@ -67,7 +67,7 @@ This does Play + Wait + Check in a single turn instead of three. Patience is req
 - Complete all lessons in a section → next section unlocks
 
 ### Key UI Elements
-- **NEXT button**: Bottom-right of player controls at approximately (1518, 790). **Disabled** during playback, **enabled** after completion.
+- **NEXT button**: Bottom-right of player controls. **Disabled** during playback, **enabled** after completion.
 - **Play/Pause**: Bottom-left at approximately (347, 790)
 - **MENU tab**: Left sidebar at approximately (80, 371) — shows course outline
 - **TRANSCRIPT tab**: Left sidebar at approximately (145, 371)
@@ -83,7 +83,7 @@ This does Play + Wait + Check in a single turn instead of three. Patience is req
 ### Troubleshooting
 - "Content not playing properly" modal → dismiss it (click X or OK) and try again
 - If playback doesn't start → click the Play button (center of video area or at ~347, 790)
-- If NEXT stays disabled after 3+ minutes → check for interactive elements (quiz, clickable items) that need completion first
+- If NEXT stays disabled after 2+ wait cycles → check for interactive elements (quiz, clickable items) that need completion first
 - The course player is embedded in Viva Learning's shell — use the Close button (not browser back) to return
 
 ---
@@ -126,10 +126,10 @@ This does Play + Wait + Check in a single turn instead of three. Patience is req
 7. Click Play on the start screen (large play button in center)
 8. **FOR EACH LESSON/SECTION repeat this cycle:**
    a. Ensure video is playing (if paused, click Play at ~347, 790)
-   b. Wait 90 seconds: `{"type": "wait", "seconds": 90}` — **batch with click in same turn**
-   c. Take screenshot — **FIRST check NEXT button (bottom-right ~1518, 790): is it bright/enabled?**
-   d. If NEXT is enabled → click NEXT at (1518, 790). **Do NOT click Play again.**
-   e. If NEXT still disabled → wait another 90 seconds, screenshot, check NEXT again
+   b. Wait 30 seconds: `{"type": "wait", "seconds": 30}` — **batch with click in same turn**
+   c. Take screenshot — **FIRST check NEXT button (bottom-right): is it bright/enabled?**
+   d. If NEXT is enabled → click NEXT. **Do NOT click Play again.**
+   e. If NEXT still disabled → wait another 30 seconds, screenshot, check NEXT again
    f. If quiz/interactive content appears → answer questions, click Submit
    g. Continue to next lesson
 9. After Section 5 is complete, the course shows as Completed
@@ -138,6 +138,6 @@ This does Play + Wait + Check in a single turn instead of three. Patience is req
 - Do NOT click Close/Back during a lesson — it may lose progress
 - The NEXT button position is consistent: bottom-right of the player controls
 - Some lessons may have quizzes — look for radio buttons, checkboxes, or "Submit" buttons
-- Videos typically last 1-5 minutes per lesson
+- Videos typically last 30-60 seconds per lesson
 - Section 2 (Test-out assessment) has multiple-choice questions — read and answer them
 - TOTAL estimated time: 15-30 minutes due to video playback waits

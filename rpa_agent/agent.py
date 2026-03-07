@@ -157,6 +157,9 @@ class AgentConfig:
     # Guidebook — path to a .md guidebook for navigation reference
     guidebook_path: Optional[Path] = None
 
+    # Debug mode — step-through with Alt key, show reasoning in overlay
+    debug: bool = False
+
 
 @dataclass
 class AgentStep:
@@ -253,6 +256,8 @@ class GUIAgent:
         self._conversation_history: List[Dict[str, Any]] = []
         self._recent_actions: List[str] = []  # Track recent actions for stuck detection
         self._vlm_scale_factor: float = 1.0  # Ratio of original/VLM image size
+        self._vlm_pad_x: int = 0  # Letterbox padding offset X
+        self._vlm_pad_y: int = 0  # Letterbox padding offset Y
 
         # Build system prompt — only needed for Anthropic and OpenAI-VLM providers
         if self.config.provider == "openai":
@@ -408,33 +413,36 @@ class GUIAgent:
         scale those coordinates back to the original screen resolution.
         Modifies the action in-place.
 
-        Uses separate X/Y scale factors for non-uniform scaling (e.g. ultrawide
-        3440x1440 native scaled to 1920x1080 for the model).
+        When letterboxing is used (aspect-ratio-preserving resize with padding),
+        coordinates are first adjusted by subtracting the padding offset, then
+        scaled uniformly (same factor for X and Y).
         """
         sx = getattr(self, '_vlm_scale_factor_x', self._vlm_scale_factor)
         sy = getattr(self, '_vlm_scale_factor_y', self._vlm_scale_factor)
-        if sx == 1.0 and sy == 1.0:
+        pad_x = getattr(self, '_vlm_pad_x', 0)
+        pad_y = getattr(self, '_vlm_pad_y', 0)
+        if sx == 1.0 and sy == 1.0 and pad_x == 0 and pad_y == 0:
             return
 
         # Absolute x, y (most actions)
         if hasattr(action, 'x') and isinstance(getattr(action, 'x'), (int, float)):
             if action.x is not None:
-                action.x = round(action.x * sx)
+                action.x = round((action.x - pad_x) * sx)
         if hasattr(action, 'y') and isinstance(getattr(action, 'y'), (int, float)):
             if action.y is not None:
-                action.y = round(action.y * sy)
+                action.y = round((action.y - pad_y) * sy)
 
         # DragAction: start_x/y, end_x/y
         if hasattr(action, 'start_x'):
-            action.start_x = round(action.start_x * sx)
+            action.start_x = round((action.start_x - pad_x) * sx)
         if hasattr(action, 'start_y'):
-            action.start_y = round(action.start_y * sy)
+            action.start_y = round((action.start_y - pad_y) * sy)
         if hasattr(action, 'end_x'):
-            action.end_x = round(action.end_x * sx)
+            action.end_x = round((action.end_x - pad_x) * sx)
         if hasattr(action, 'end_y'):
-            action.end_y = round(action.end_y * sy)
+            action.end_y = round((action.end_y - pad_y) * sy)
 
-        # MoveRelativeAction: dx, dy offsets also need scaling
+        # MoveRelativeAction: dx, dy offsets — only scale, no padding adjustment
         if hasattr(action, 'dx') and isinstance(getattr(action, 'dx'), (int, float)):
             action.dx = round(action.dx * sx)
         if hasattr(action, 'dy') and isinstance(getattr(action, 'dy'), (int, float)):
@@ -1651,7 +1659,7 @@ class GUIAgent:
         # Start action notifier
         if self.config.show_action_notifier:
             from .core.action_notifier import ActionNotifier
-            self._action_notifier = ActionNotifier()
+            self._action_notifier = ActionNotifier(debug=self.config.debug)
             self._action_notifier.start()
             self._action_notifier.show_action("thinking", f"CUA-VLM: {task[:50]}...")
 
@@ -1660,7 +1668,8 @@ class GUIAgent:
 
         self.console.print(Panel(
             f"[bold]Task:[/] {task}\n[dim]Provider: CUA-VLM ({self.openai_vlm.config.model}), "
-            f"display: {display_w}x{display_h}[/]",
+            f"display: {display_w}x{display_h}"
+            f"{', DEBUG MODE (Alt to step)' if self.config.debug else ''}[/]",
             title="GUI Agent Started (CUA-VLM Mode)"
         ))
 
@@ -1702,10 +1711,10 @@ class GUIAgent:
                 if last_had_wait:
                     turn_hint = (
                         "You just waited for content to play. NOW CHECK: is the NEXT button "
-                        "(bottom-right of player controls, ~1518, 790 in model coords) "
+                        "(bottom-right of player controls) "
                         "enabled/bright? If yes, CLICK IT immediately — do NOT click Play again. "
                         "Look at the playback timeline — if it's at the end, the video is done "
-                        "and NEXT should be clickable. If NEXT is still disabled, wait 90 more seconds."
+                        "and NEXT should be clickable. If NEXT is still disabled, wait 30 more seconds."
                     )
                     last_had_wait = False
 
@@ -1808,7 +1817,48 @@ class GUIAgent:
                     ))
                     continue
 
-                # 5. Map and execute CUA actions
+                # 5. Debug mode: show reasoning and wait for Alt before executing
+                if self.config.debug and self._action_notifier:
+                    # Extract reasoning from model response
+                    debug_reasoning = ""
+                    try:
+                        parsed_resp = json.loads(vlm_response.text.strip().lstrip("`").lstrip("json").lstrip("`"))
+                        debug_reasoning = parsed_resp.get("reasoning", "")
+                    except (json.JSONDecodeError, AttributeError):
+                        debug_reasoning = vlm_response.text[:200]
+
+                    # Build action summary
+                    action_parts = []
+                    for raw_a in actions_raw:
+                        a_type = raw_a.get("type", "?")
+                        if a_type in ("click", "double_click", "right_click"):
+                            action_parts.append(f"{a_type}({raw_a.get('x', '?')},{raw_a.get('y', '?')})")
+                        elif a_type == "type":
+                            action_parts.append(f"type('{raw_a.get('text', '')[:20]}')")
+                        elif a_type in ("press_key", "hotkey", "keypress"):
+                            keys = raw_a.get("keys", [raw_a.get("key", "?")])
+                            action_parts.append(f"key({'+'.join(str(k) for k in keys)})")
+                        elif a_type == "wait":
+                            action_parts.append(f"wait({raw_a.get('seconds', '?')}s)")
+                        elif a_type == "scroll":
+                            action_parts.append(f"scroll(dy={raw_a.get('scroll_y', '?')})")
+                        else:
+                            action_parts.append(a_type)
+                    action_summary = " -> ".join(action_parts)
+
+                    self._action_notifier.show_debug_step(step_number, action_summary, debug_reasoning)
+                    self.console.print(f"[yellow]DEBUG: Reasoning: {_sanitize_text(debug_reasoning[:150])}[/]")
+                    self.console.print(f"[yellow]DEBUG: Actions: {_sanitize_text(action_summary[:150])}[/]")
+                    self.console.print("[yellow]DEBUG: Press Alt to execute...[/]")
+
+                    if not self._action_notifier.wait_for_alt():
+                        if self.state != AgentState.RUNNING:
+                            break
+                        self.console.print("[yellow]DEBUG: Alt wait timed out or interrupted[/]")
+                    else:
+                        self.console.print("[dim]DEBUG: Alt pressed, executing...[/]")
+
+                # 6. Map and execute CUA actions
                 mapped_actions = map_cua_actions(actions_raw)
                 for action in mapped_actions:
                     self._rescale_action_coords(action)
@@ -2288,8 +2338,10 @@ class GUIAgent:
             screenshot_path = self.config.screenshot_dir / f"step_{step_number:03d}_{timestamp}.png"
             img.save(screenshot_path, format="PNG", optimize=True)
 
-        # Scale to exact display_width x display_height from config
-        # The model expects images matching the declared display dimensions
+        # Scale to fit display_width x display_height from config,
+        # preserving aspect ratio to avoid distortion. Uses letterboxing
+        # (black bars) when aspect ratios don't match, so the model sees
+        # an undistorted image and coordinates map back accurately.
         if self.cua_client:
             target_width = self.cua_client.config.display_width
             target_height = self.cua_client.config.display_height
@@ -2300,14 +2352,35 @@ class GUIAgent:
             target_width = 1920
             target_height = 1080
         if original_w != target_width or original_h != target_height:
-            img = img.resize((target_width, target_height), Image.LANCZOS)
-            # Store scale factors for coordinate mapping:
-            # model returns coords in display space → multiply to get native
-            self._vlm_scale_factor_x = original_w / target_width
-            self._vlm_scale_factor_y = original_h / target_height
+            # Compute uniform scale factor (fit within target, preserve AR)
+            scale_x = target_width / original_w
+            scale_y = target_height / original_h
+            uniform_scale = min(scale_x, scale_y)
+            scaled_w = round(original_w * uniform_scale)
+            scaled_h = round(original_h * uniform_scale)
+
+            # Resize with uniform scaling (no distortion)
+            resized = img.resize((scaled_w, scaled_h), Image.LANCZOS)
+
+            # Compute padding offsets (center the image)
+            pad_x = (target_width - scaled_w) // 2
+            pad_y = (target_height - scaled_h) // 2
+
+            # Create target-sized image with black background and paste
+            img = Image.new("RGB", (target_width, target_height), (0, 0, 0))
+            img.paste(resized, (pad_x, pad_y))
+
+            # Store scale factor and padding for coordinate mapping:
+            # model returns coords in display space → subtract padding, then divide by uniform_scale to get native
+            self._vlm_scale_factor_x = 1.0 / uniform_scale
+            self._vlm_scale_factor_y = 1.0 / uniform_scale
+            self._vlm_pad_x = pad_x
+            self._vlm_pad_y = pad_y
         else:
             self._vlm_scale_factor_x = 1.0
             self._vlm_scale_factor_y = 1.0
+            self._vlm_pad_x = 0
+            self._vlm_pad_y = 0
         # Legacy single scale factor (used by _rescale_action_coords)
         self._vlm_scale_factor = self._vlm_scale_factor_y
 
@@ -2588,8 +2661,10 @@ class GUIAgent:
         try:
             data = json.loads(response.text)
             if data.get("found"):
-                x = round(data["x"] * self._vlm_scale_factor)
-                y = round(data["y"] * self._vlm_scale_factor)
+                pad_x = getattr(self, '_vlm_pad_x', 0)
+                pad_y = getattr(self, '_vlm_pad_y', 0)
+                x = round((data["x"] - pad_x) * self._vlm_scale_factor)
+                y = round((data["y"] - pad_y) * self._vlm_scale_factor)
                 return (x, y)
         except json.JSONDecodeError:
             pass
