@@ -1694,7 +1694,6 @@ class GUIAgent:
 
         step_number = 0
         turn_history: List[TurnRecord] = []
-        recent_click_coords: List[tuple] = []  # Track recent click (x, y) for stuck detection
         last_had_wait = False  # Track if last turn included a long wait
 
         try:
@@ -1718,25 +1717,14 @@ class GUIAgent:
                     )
                     last_had_wait = False
 
-                # Stuck detection: if we clicked near the same coords 3+ times in last 4 turns
-                if len(recent_click_coords) >= 3:
-                    last_coords = recent_click_coords[-3:]
-                    # Check if all 3 are within 50px of each other
-                    xs = [c[0] for c in last_coords]
-                    ys = [c[1] for c in last_coords]
-                    if max(xs) - min(xs) < 50 and max(ys) - min(ys) < 50:
-                        avg_x, avg_y = sum(xs) // 3, sum(ys) // 3
-                        stuck_hint = (
-                            f"WARNING: You have clicked near ({avg_x}, {avg_y}) three times in a "
-                            f"row with no progress. STOP repeating this action. Instead:\n"
-                            f"1. Look at the ENTIRE screen — is there a NEXT button elsewhere?\n"
-                            f"2. Check if there's a quiz, checkbox, or interactive element to complete\n"
-                            f"3. Try scrolling down to see hidden content\n"
-                            f"4. Check the sidebar menu for your current position in the course\n"
-                            f"Do something DIFFERENT this turn."
-                        )
-                        turn_hint = stuck_hint if not turn_hint else f"{turn_hint}\n\n{stuck_hint}"
-                        self.console.print(f"[yellow]Stuck detection: repeated clicks near ({avg_x}, {avg_y})[/]")
+                # Step budget awareness
+                remaining = self.config.max_steps - step_number
+                budget_hint = f"[Step {step_number}/{self.config.max_steps} — {remaining} steps remaining]"
+                if remaining <= 3:
+                    budget_hint += " URGENT: Very few steps left. Complete the task NOW or report done/fail."
+                elif remaining <= self.config.max_steps // 3:
+                    budget_hint += " Be efficient — limited steps remaining."
+                turn_hint = budget_hint if not turn_hint else f"{turn_hint}\n\n{budget_hint}"
 
                 # 2. Send to model with turn history
                 self.console.print(f"[dim]Sending to model (history: {len(turn_history)} turns)...[/]")
@@ -1866,6 +1854,8 @@ class GUIAgent:
                 action_summaries = []
                 result_summaries = []
 
+                stuck_warnings = []  # Collect stuck warnings for next turn_hint
+
                 for i, action in enumerate(mapped_actions):
                     if self.state != AgentState.RUNNING:
                         break
@@ -1881,6 +1871,62 @@ class GUIAgent:
                         action_summaries.append(f"{action.action_type.value}: SKIPPED")
                         result_summaries.append("skipped by user")
                         continue
+
+                    # Per-action stuck detection
+                    stuck_warning, stuck_severity = self._check_stuck_loop(action)
+
+                    if stuck_severity == "override":
+                        # Force keyboard fallback (Enter key) instead of the stuck action
+                        self.console.print(f"[red bold]OVERRIDE: Forcing Enter key after repeated actions[/]")
+                        override_action = KeyAction(action_type=ActionType.PRESS_KEY, key="enter")
+                        result = self._execute_action(override_action)
+                        self._recent_actions.clear()
+                        action_summaries.append(f"OVERRIDE: enter (was {action.action_type.value})")
+                        result_summaries.append(f"SYSTEM OVERRIDE: {stuck_warning}")
+                        # Record step for first action
+                        if i == 0:
+                            step = AgentStep(
+                                step_number=step_number,
+                                timestamp=datetime.now(),
+                                screenshot_path=screenshot_path,
+                                vlm_response=vlm_response.text,
+                                action=override_action,
+                                action_result=result,
+                                reasoning="SYSTEM OVERRIDE: Forced Enter key after repeated identical actions",
+                                token_usage=vlm_response.usage,
+                            )
+                            self._display_step(step)
+                            self.steps.append(step)
+                            if on_step:
+                                on_step(step)
+                        break  # Skip remaining actions in batch
+
+                    if stuck_severity == "block":
+                        # Skip this action and all remaining in batch
+                        self.console.print(f"[red]BLOCKED: Action not executed (stuck loop detected)[/]")
+                        action_summaries.append(f"BLOCKED: {action.action_type.value}")
+                        result_summaries.append(f"SYSTEM BLOCKED: {stuck_warning}")
+                        # Record step for first action
+                        if i == 0:
+                            step = AgentStep(
+                                step_number=step_number,
+                                timestamp=datetime.now(),
+                                screenshot_path=screenshot_path,
+                                vlm_response=vlm_response.text,
+                                action=action,
+                                action_result=ActionResult(success=False, action=action, error="BLOCKED: stuck loop"),
+                                reasoning="SYSTEM BLOCKED: Action not executed due to stuck loop",
+                                token_usage=vlm_response.usage,
+                            )
+                            self._display_step(step)
+                            self.steps.append(step)
+                            if on_step:
+                                on_step(step)
+                        break  # Skip remaining actions in batch
+
+                    if stuck_severity == "warn" and stuck_warning:
+                        self.console.print(f"[yellow]{stuck_warning[:80]}...[/]")
+                        stuck_warnings.append(stuck_warning)
 
                     # Execute
                     if isinstance(action, ScreenshotAction):
@@ -1902,10 +1948,11 @@ class GUIAgent:
                         action_desc += f" key={getattr(action, 'key', '')}"
                     action_summaries.append(action_desc)
 
+                    # Rich feedback instead of minimal OK/FAILED
                     if result.success:
-                        result_summaries.append(f"{action.action_type.value}: OK")
+                        result_summaries.append(self._build_success_feedback(action))
                     else:
-                        result_summaries.append(f"{action.action_type.value}: FAILED - {result.error}")
+                        result_summaries.append(self._build_feedback_message(result))
 
                     # Only create AgentStep for the first action (others are batched)
                     if i == 0:
@@ -1932,15 +1979,6 @@ class GUIAgent:
                         turn_had_wait = True
                     elif not isinstance(action, (WaitAction, ScreenshotAction)):
                         is_wait_only_turn = False
-                # Track click coords from raw actions (model space, pre-rescaling)
-                for raw_action in actions_raw:
-                    if raw_action.get("type") in ("click", "double_click"):
-                        cx = raw_action.get("x", 0)
-                        cy = raw_action.get("y", 0)
-                        recent_click_coords.append((cx, cy))
-                        # Keep only last 6 entries
-                        if len(recent_click_coords) > 6:
-                            recent_click_coords.pop(0)
                 last_had_wait = turn_had_wait
 
                 # Don't count wait-only turns against the step limit
@@ -1962,11 +2000,14 @@ class GUIAgent:
                     self.steps[-1].screenshot_path = screenshot_after_path
 
                 # 7. Record this turn in history
+                combined_results = "; ".join(result_summaries)
+                if stuck_warnings:
+                    combined_results += "\n" + "\n".join(stuck_warnings)
                 turn_history.append(TurnRecord(
                     screenshot_before=screenshot_before,
                     model_response=vlm_response.text,
                     actions_summary="; ".join(action_summaries),
-                    results_summary="; ".join(result_summaries),
+                    results_summary=combined_results,
                     screenshot_after=screenshot_after,
                 ))
 
